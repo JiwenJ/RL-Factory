@@ -12,6 +12,7 @@ from verl.utils.torch_functional import tokenize_and_postprocess_data
 class Env(ABC):
     def __init__(self, config, centralized_actor=None):
         tool_manager_name = config.get('tool_manager', 'qwen3')
+        tool_manager_name = config.get('tool_manager', 'qwen3')
         # 检查是否使用集中式工具管理器
         if not tool_manager_name:
             tool_manager_name = "adaptive"
@@ -32,11 +33,12 @@ class Env(ABC):
                     tool_manager_name = 'qwen2_5'
                 elif 'qwen2_5_vl' in model_type:
                     tool_manager_name = 'qwen2_5_vl'
-                elif'llama' in model_type:
+                elif 'llama' in model_type:
                     tool_manager_name = 'llama3'  
                 else:
                     tool_manager_name = model_type
                     raise ValueError(f"'{tool_manager_name}' 需要进行适配，请添加一个对应的tool_manager")                   
+
             self.tool_manager = TOOL_MANAGER_REGISTRY[tool_manager_name](verl_config=config)
         
         self.max_prompt_length = config.get('max_prompt_length', 2048)
