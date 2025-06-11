@@ -11,6 +11,7 @@ TOOL_MANAGER_REGISTRY = {
     'config': ConfigManager,
     'qwen3': QwenManager,
     'qwen2_5': Qwen25Manager,
+    'qwen2_5_vl': Qwen25VLManager,
     'llama3' : Llama3Manager,
     'centralized_qwen3': CentralizedQwenManager,
 }
