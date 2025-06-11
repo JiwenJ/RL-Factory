@@ -12,7 +12,6 @@ from verl.utils.torch_functional import tokenize_and_postprocess_data
 class Env(ABC):
     def __init__(self, config, centralized_actor=None):
         tool_manager_name = config.get('tool_manager', 'qwen3')
-        tool_manager_name = config.get('tool_manager', 'qwen3')
         # 检查是否使用集中式工具管理器
         if not tool_manager_name:
             tool_manager_name = "adaptive"
