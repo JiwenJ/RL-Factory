@@ -220,11 +220,12 @@ class ActorRolloutRefWorker(Worker):
         use_remove_padding=False,
         use_fused_kernels=False,
         enable_gradient_checkpointing=False,
-        trust_remote_code=False,
+        trust_remote_code=True,
         use_liger=False,
         role="actor",
         enable_activation_offload=False,
     ):
+        trust_remote_code=True
         from torch import optim
         from torch.distributed.fsdp import CPUOffload, MixedPrecision
         from transformers import AutoConfig, AutoModelForCausalLM, AutoModelForVision2Seq
@@ -735,6 +736,7 @@ class ActorRolloutRefWorker(Worker):
             max_turns = self.rollout.config.max_turns
             for step in range(max_turns):
                 prompts = self.rollout_sharding_manager.preprocess_data(prompts)
+                breakpoint()
                 output = self.rollout.generate_sequences(prompts=prompts)
 
                 log_gpu_memory_usage('After rollout generation', logger=logger)

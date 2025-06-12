@@ -85,6 +85,7 @@ class Env(ABC):
         return step_reward
 
     def step(self, responses, tokenizer):
+        breakpoint()
         cur_actions, tool_results = self.tool_manager.execute_actions(responses=responses)
         next_obs, dones, valid_action, is_tool = [], [], [], []
 

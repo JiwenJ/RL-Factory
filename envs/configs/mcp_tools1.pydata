@@ -1,0 +1,8 @@
+[
+    {'mcpServers': {
+        'image_edit': {
+            'command': 'python3',
+            'args': ['envs/tools/image_edit.py']
+        }
+    }}
+]

@@ -323,9 +323,11 @@ class Qwen25VLManager(ToolManager):
             tools=[func.function for func in self.tool_map.values()],
             tokenize=False, add_generation_prompt=False
         )
+        breakpoint()
 
         if mode == 'initial':
             chat = input_data
+            # breakpoint()
             prompt_with_chat_template = tokenizer.apply_chat_template(
                 conversation=chat, tokenize=False, tools=[func.function for func in self.tool_map.values()], 
                 add_generation_prompt=add_generation_prompt
