@@ -489,7 +489,7 @@ class RayPPOTrainer:
         self.train_dataloader = StatefulDataLoader(
             dataset=self.train_dataset,
             batch_size=self.config.data.get("gen_batch_size", self.config.data.train_batch_size),
-            num_workers=self.config.data.get("dataloader_num_workers", 8),
+            num_workers=self.config.data.get("dataloader_num_workers", 0),
             drop_last=True,
             collate_fn=collate_fn,
             sampler=train_sampler,
@@ -502,8 +502,8 @@ class RayPPOTrainer:
         self.val_dataloader = StatefulDataLoader(
             dataset=self.val_dataset,
             batch_size=val_batch_size,
-            num_workers=self.config.data.get("dataloader_num_workers", 8),
-            shuffle=self.config.data.get("validation_shuffle", True),
+            num_workers=self.config.data.get("dataloader_num_workers", 0),
+            shuffle=False,
             drop_last=False,
             collate_fn=collate_fn,
         )
@@ -946,7 +946,9 @@ class RayPPOTrainer:
         last_val_metrics = None
 
         for epoch in range(self.config.trainer.total_epochs):
+            # breakpoint()
             for batch_dict in self.train_dataloader:
+                # breakpoint()
                 metrics = {}
                 timing_raw = {}
                 batch: DataProto = DataProto.from_single_dict(batch_dict)
