@@ -704,6 +704,7 @@ class ActorRolloutRefWorker(Worker):
     def generate_sequences_loop(self, prompts: DataProto):
         # TODO: Temporary fix bus for tp > 1, optimization will be done later
         prompts = prompts.to(torch.cuda.current_device())
+        # breakpoint()
 
         assert self._is_rollout
         if self._is_offload_param:
@@ -736,7 +737,7 @@ class ActorRolloutRefWorker(Worker):
             max_turns = self.rollout.config.max_turns
             for step in range(max_turns):
                 prompts = self.rollout_sharding_manager.preprocess_data(prompts)
-                breakpoint()
+                # breakpoint()
                 output = self.rollout.generate_sequences(prompts=prompts)
 
                 log_gpu_memory_usage('After rollout generation', logger=logger)

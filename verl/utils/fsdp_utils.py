@@ -108,7 +108,7 @@ def get_fsdp_wrap_policy(module, config=None, is_lora=False):
         policies.append(size_policy)
     elif fsdp_transformer_layer_cls_to_wrap is not None:
         transformer_cls_to_wrap = set()
-        breakpoint()
+        # breakpoint()
         for layer_class in fsdp_transformer_layer_cls_to_wrap:
             transformer_cls = get_module_class_from_name(module, layer_class)
             if transformer_cls is None:
