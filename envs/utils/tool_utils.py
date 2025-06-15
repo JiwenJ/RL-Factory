@@ -4,6 +4,8 @@ import numpy as np
 from verl import DataProto
 import torch.distributed as dist
 from tensordict import TensorDict
+from typing import List
+from PIL import Image
 
 
 class ToolUtils:
@@ -38,7 +40,7 @@ class ToolUtils:
 
         self.env_object = env_object
 
-    def postprocess_output_tp(self, output: DataProto, step: int):
+    def postprocess_output_tp(self, output: DataProto, image_data: List[List[Image.Image]], step: int=2):
         '''output: cpu'''
 
         # init loop responses token
@@ -82,7 +84,7 @@ class ToolUtils:
         )
 
         infos_str, dones, _, _ = self.env_object.step(
-            responses=responses_str, tokenizer=self.tokenizer
+            responses=responses_str, tokenizer=self.tokenizer, image_data=image_data
         )
         
         #if not use_process_reward will be 0
@@ -152,21 +154,25 @@ class ToolUtils:
 
         return next_data
     
-    def postprocess_output(self, output: DataProto, step: int):
+    def postprocess_output(self, prompts: DataProto, output: DataProto, image_data: List[List[Image.Image]], step: int=2):
         '''output: cpu'''
+        
         # init loop responses token
+        # breakpoint()
         if self.loop_cnt == 0:
             self.batch_size = output.batch.batch_size[0]
+            self.rollout_n = self.batch_size // len(image_data)
             self.loop_responses_token = [[] for _ in range(self.batch_size)]
-            self.init_prompt_token = output.batch.get('prompts')
+            self.init_prompt_token = output.non_tensor_batch.get('raw_prompt_ids')
             self.tool_use = [[] for _ in range(self.batch_size)]
             prompt_length = self.init_prompt_token.shape[-1]
             self.init_attention_mask = output.batch.get('attention_mask')[:,:prompt_length]  
 
             batch_idxs = list(range(self.batch_size))
+            breakpoint()
             for idx in range(self.batch_size):
                 prompt_token = self.init_prompt_token[idx]
-                prompt_token_list = prompt_token[prompt_token != self.pad_token_id].tolist()
+                prompt_token_list = torch.tensor(prompt_token)[torch.tensor(prompt_token) != self.pad_token_id].tolist()
                 self.loop_responses_token[idx].append(prompt_token_list)
         else:
             batch_idxs = output.meta_info['index']
@@ -186,7 +192,7 @@ class ToolUtils:
                         response_token_list[-1] = self.stop_id
             self.loop_responses_token[batch_idx].append(response_token_list)
             process_response.append(response_token_list)
-
+        breakpoint()
         # decode responses for env step (detect tool call)
         responses_str = self.tokenizer.batch_decode(
             process_response,
@@ -194,7 +200,7 @@ class ToolUtils:
         )
 
         infos_str, dones, _, _ = self.env_object.step(
-            responses=responses_str, tokenizer=self.tokenizer
+            responses=responses_str, tokenizer=self.tokenizer, image_data=image_data
         )
 
         #if not use_process_reward will be 0
@@ -204,11 +210,13 @@ class ToolUtils:
             step_scores = [0] * len(responses_str)
 
         # encode infos for next prompt
+        breakpoint()
         info_tokens = self.tokenizer(infos_str).input_ids
         next_prompt_token = []
         next_prompt_length = []
         next_sample_idx = []
         for idx, batch_idx in enumerate(batch_idxs):
+            # breakpoint()
             if not dones[idx]:
                 info_token_list = info_tokens[idx]
                 self.loop_responses_token[batch_idx].append(info_token_list)
@@ -245,9 +253,17 @@ class ToolUtils:
         ).share_memory_()
         raw_prompt_ids = np.empty(len(next_prompt_token), dtype=object)
         # raw_prompt_ids[:] = [np.array(x[-max_len:]) for x in next_prompt_token]
+        breakpoint()
         raw_prompt_ids[:] = [x[-max_len:] for x in next_prompt_token]
 
-        next_data = DataProto(batch=next_batch, non_tensor_batch={'raw_prompt_ids': raw_prompt_ids})
+        # Filter image_data based on next_sample_idx
+        original_image_duplicate = [[img[0], img[0]] for img in image_data for _ in range(self.rollout_n)]
+        next_image_data = [original_image_duplicate[idx] for idx in next_sample_idx]
+        # Convert to the expected format: list of dictionaries with "image" key
+        next_image_data = [{"image": img} for img in next_image_data]
+        next_image_data = np.array(next_image_data, dtype=object)
+
+        next_data = DataProto(batch=next_batch, non_tensor_batch={'raw_prompt_ids': raw_prompt_ids, 'multi_modal_data': next_image_data})
         next_data.meta_info.update(self.meta_info)
         next_data.meta_info['index'] = next_sample_idx
         next_data.meta_info['do_sample'] = False # step > 0 does not do sample

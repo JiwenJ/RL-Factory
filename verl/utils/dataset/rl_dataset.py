@@ -189,9 +189,11 @@ class RLHFDataset(Dataset):
         model_inputs = {}
 
         if self.processor is not None:
+            # breakpoint()
             from verl.utils.dataset.vision_utils import process_image, process_video
 
             raw_prompt = self.processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+            # breakpoint()
             multi_modal_data = {}
 
             images = None
@@ -205,6 +207,7 @@ class RLHFDataset(Dataset):
                 multi_modal_data["video"] = [video.numpy() for video in videos]
 
             model_inputs = self.processor(text=[raw_prompt], images=images, videos=videos, return_tensors="pt")
+            # breakpoint()
 
             input_ids = model_inputs.pop("input_ids")
             attention_mask = model_inputs.pop("attention_mask")

@@ -4,6 +4,8 @@ import json
 import json5
 import asyncio
 import traceback
+import base64
+from PIL import Image
 from ast import literal_eval
 from omegaconf import OmegaConf
 from envs.tool_manager.base_manager import ToolManager
@@ -12,7 +14,10 @@ from typing import Union, List, Tuple, Optional, Any, Dict
 from envs.utils.util import ToolServiceError, DocParserError
 from qwen_agent.tools import TOOL_REGISTRY, MCPManager, BaseTool
 from qwen_agent.llm.schema import ASSISTANT, SYSTEM, USER, FUNCTION, ContentItem
-
+import json
+import io
+import base64
+import binascii
 
 def parse_mcp_tools_config(file_path):
     try:
@@ -71,7 +76,7 @@ class Qwen25VLManager(ToolManager):
         
         self.functions = [func.function for func in self.tool_map.values()]
 
-    async def execute_all_tools(self, actions, tool_list):
+    async def execute_all_tools(self, actions, tool_list, image_data: List[List[Image.Image]]):
         """异步并行执行所有工具列表
         
         Args:
@@ -83,14 +88,14 @@ class Qwen25VLManager(ToolManager):
         
         # 并行执行每个工具列表
         tasks = []
-        for temp_action, temp_tool_list in zip(actions, tool_list):
-            tasks.append(self._execute_tool_batch(temp_action, temp_tool_list))
+        for temp_action, temp_tool_list, temp_image_data in zip(actions, tool_list, image_data):
+            tasks.append(self._execute_tool_batch(temp_action, temp_tool_list, temp_image_data))
         
         results = await asyncio.gather(*tasks)
         
         return results
         
-    async def _execute_tool_batch(self, action, tools):
+    async def _execute_tool_batch(self, action, tools, image_data: List[Image.Image]):
         """异步并行执行一批工具
         
         Args:
@@ -99,7 +104,8 @@ class Qwen25VLManager(ToolManager):
         Returns:
             工具执行结果的列表
         """        
-        async def execute_single_tool(tool):
+        async def execute_single_tool(tool, image_data:Image.Image):
+            
             tool_instance = self.get_tool(tool["name"])
             args = tool["args"]
             if tool_instance is not None:
@@ -113,40 +119,44 @@ class Qwen25VLManager(ToolManager):
                         # 使用asyncio.to_thread包装self._call_tool以保持异步特性
                         tool_result = await asyncio.to_thread(
                             self._call_tool, 
-                            tool["name"], json.dumps(args, ensure_ascii=False, indent=4)
+                            tool["name"], image_data
                         )
-                        result = """# Execute the tool {} successed
-  - The args are: {}
-  - The result is:
-{}""".format(tool["name"], args, tool_result)
+                        # tool_result = self.base64_to_pil(tool_result)
+                        # breakpoint()
+                        if isinstance(tool_result, Image.Image):
+                            result = [
+                                {"type": "text", "text": "The result of the tool is here. Please check it."},
+                                {"type": "image_url","image": tool_result}
+                            ]
+                            return result
+                        
+                        elif isinstance(tool_result, List):
+                            raise ValueError("Unexpected type of tool_result: {}".format(type(tool_result)))
+                        else:
+                            result = "# Execute the tool unsuccessfully"
+                            return result
                     except Exception as e:
-                        result = """# Execute the tool {} failed
-  - The original args are: {}
-  - Error message:
-{}""".format(tool["name"], args, str(e))
-                elif type(args) is str:
-                    # Json decode error: xxx
-                    result = args
-                else:
-                    result = 'Unexpected type of args: {} (args: {})'.format(type(args), args)
+                        result = "# Execute the tool {} failed".format(tool["name"])
+                        return result
             else:
-                if tool['name'] == '<empty>':
-                    result = args
-                else:
-                    result = "# Failed to find the tool {} in the tool map".format(tool['name'])
+                result = "# Failed to find the tool {} in the tool map".format(tool["name"])
+                
+            if isinstance(result, str):
+                return [{"type": "text", "text": result}]
+            else:
+                return result
 
-            return result
         
         if action == 'answer':
             # 'tools' is a str (the answer)
-            results = {'role': 'assitant', 'content': tools}
+            results = {'role': 'assistant', 'content': tools}
         elif action == 'error':
             # 'error' only occurs when there is no 'actions' tag or there is no 'action' tag after extraction
             # ('Cannot extract the actions tag' or 'There is no action after extraction')
-            results = {'role': 'assitant', 'content': """# Extract the tools failed due to: {}""".format(tools)}
+            results = {'role': 'assistant', 'content': """# Extract the tools failed due to: {}""".format(tools)}
         elif action == 'actions':
             # 'tools' is the list of the 'Tool' instances
-            tasks = [execute_single_tool(temp_tool) for temp_tool in tools]
+            tasks = [execute_single_tool(temp_tool, image_data[-1]) for temp_tool in tools]
             tool_results = await asyncio.gather(*tasks)
             results = [{'role': 'tool', 'content': temp_tool_result} for temp_tool_result in tool_results]
         else:
@@ -154,12 +164,12 @@ class Qwen25VLManager(ToolManager):
 
         return results
     
-    def _call_tool(self, tool_name: str, tool_args: Union[str, dict] = '{}', **kwargs) -> Union[str, List[ContentItem]]:
+    def _call_tool(self, tool_name: str, image_data: Image.Image = None, **kwargs) -> Union[str, List[ContentItem]]:
         """The interface of calling tools for the agent.
 
         Args:
             tool_name: The name of one tool.
-            tool_args: Model generated or user given tool parameters.
+            image_data: Image data for the tool.
 
         Returns:
             The output of tools.
@@ -167,8 +177,12 @@ class Qwen25VLManager(ToolManager):
         if tool_name not in self.tool_map:
             return f'Tool {tool_name} does not exists.'
         tool = self.get_tool(tool_name)
+        # breakpoint()
         try:
-            tool_result = tool.call(tool_args, **kwargs)
+            tool_args = json.dumps({"img_base64": self.pil_to_base64(image_data), "instruction": "top"})
+            tool_result = tool.call(tool_args)
+            # import pdb; pdb.set_trace()
+
         except (ToolServiceError, DocParserError) as ex:
             raise ex
         except Exception as ex:
@@ -180,7 +194,11 @@ class Qwen25VLManager(ToolManager):
                             f'Traceback:\n{traceback_info}'
             return error_message
 
-        if isinstance(tool_result, str):
+        # 如果工具结果是PIL图像，直接返回
+        if self.is_base64(tool_result):
+            print("tool_result is base64")
+            return self.base64_to_pil(tool_result)
+        elif isinstance(tool_result, str):
             return tool_result
         else:
             return json.dumps(tool_result, ensure_ascii=False, indent=4)
@@ -190,9 +208,12 @@ class Qwen25VLManager(ToolManager):
             tool_name = tool.name
             self.tool_map[tool_name] = tool
         elif isinstance(tool, dict) and 'mcpServers' in tool:
+            # breakpoint()
             tools = MCPManager().initConfig(tool)
             for tool in tools:
                 tool_name = tool.name
+                if tool_name == 'image_edit-image_edit':
+                    tool_name = 'image_edit'
                 self.tool_map[tool_name] = tool
         else:
             if isinstance(tool, dict):
@@ -206,10 +227,12 @@ class Qwen25VLManager(ToolManager):
 
             self.tool_map[tool_name] = TOOL_REGISTRY[tool_name](tool_cfg)
 
-    def execute_actions(self, responses: List[str]):
+    def execute_actions(self, responses: List[str], image_data: List[List[Image.Image]]):
+        # breakpoint()
         actions, tools = [], []
         for response in responses:
             temp_action, temp_tool_list = self.parse_response(response_content=response)
+            # breakpoint()
             # temp_action: answer or tools
             # if temp_action is 'answer', temp_tool_list is the answer
             # else, temp_tool_list is the list of the 'Tool' instances
@@ -218,11 +241,11 @@ class Qwen25VLManager(ToolManager):
 
         # 使用asyncio.run同步运行异步函数
         try:
-            tool_results = asyncio.run(self.execute_all_tools(actions, tools))
+            tool_results = asyncio.run(self.execute_all_tools(actions, tools, image_data))
         except RuntimeError:
             # 如果事件循环已经在运行，则获取当前循环
             loop = asyncio.get_event_loop()
-            tool_results = loop.run_until_complete(self.execute_all_tools(actions, tools))
+            tool_results = loop.run_until_complete(self.execute_all_tools(actions, tools, image_data))
         
         return actions, tool_results
     
@@ -276,7 +299,7 @@ class Qwen25VLManager(ToolManager):
             if '</tool_call>' not in txt:
                 # incomplete </tool_call>: This is to better represent incomplete tool calls in streaming output
                 fn_name = '<empty>'
-                fn_args = """# Extract the tool name failed"""
+                fn_args = """# Extract the tool name failed, 305"""
                 parsed_tools.append(
                     {
                         "name": fn_name,
@@ -285,6 +308,7 @@ class Qwen25VLManager(ToolManager):
                 )
             else:
                 one_tool_call_txt = txt.split('</tool_call>')
+                # breakpoint()
                 try:
                     # 检查分割后是否有有效内容
                     if not one_tool_call_txt[0].strip():
@@ -294,8 +318,8 @@ class Qwen25VLManager(ToolManager):
                     fn = json5.loads(one_tool_call_txt[0].strip())
                     
                     # 检查必须字段是否存在
-                    if type(fn) is not dict or 'name' not in fn or 'arguments' not in fn:
-                        raise KeyError("Missing required fields")
+                    # if type(fn) is not dict or 'name' not in fn or 'arguments' not in fn:
+                    #     raise KeyError("Missing required fields")
                     
                     # 解析成功的情况
                     parsed_tools.append({
@@ -307,13 +331,15 @@ class Qwen25VLManager(ToolManager):
                     # 所有可能的错误类型处理
                     parsed_tools.append({
                         "name": "<empty>",
-                        "args": "# Extract the tool name failed"
+                        "args": "# Extract the tool name failed, 336"
                     })
 
         return parsed_tools
     
     def get_prompt(self, input_data, tokenizer, mode='initial', add_generation_prompt=True):
-        assert mode in ['initial', 'tool_call', 'assistant_response'], 'Invalid mode: {}'.format(mode)
+        # if isinstance(input_data, List) and "image_url" in input_data[0]["content"][1]["type"]:
+        #     mode = 'multimodal'
+        assert mode in ['initial', 'tool_call', 'assistant_response','multimodal'], 'Invalid mode: {}'.format(mode)
         base_chat = [
             {'role': SYSTEM, 'content': 'base'},
             {'role': USER, 'content': 'base'},
@@ -323,16 +349,15 @@ class Qwen25VLManager(ToolManager):
             tools=[func.function for func in self.tool_map.values()],
             tokenize=False, add_generation_prompt=False
         )
-        breakpoint()
 
         if mode == 'initial':
             chat = input_data
-            # breakpoint()
             prompt_with_chat_template = tokenizer.apply_chat_template(
                 conversation=chat, tokenize=False, tools=[func.function for func in self.tool_map.values()], 
                 add_generation_prompt=add_generation_prompt
             )
         elif mode in ['tool_call', 'assistant_response']:
+            # breakpoint()
             # NOTE: the assistant response might not be used
             role = 'tool' if mode == 'tool_call' else ASSISTANT
             if type(input_data) == str:
@@ -347,7 +372,35 @@ class Qwen25VLManager(ToolManager):
                 tokenize=False, add_generation_prompt=add_generation_prompt
             )
             prompt_with_chat_template = temp_prompt_with_chat_template.replace(base_prompt, '')
+        elif mode == 'multimodal':
+            chat = input_data
+            temp_prompt_with_chat_template = tokenizer.apply_chat_template(
+                conversation=base_chat + chat, tools=[func.function for func in self.tool_map.values()], 
+                tokenize=False, add_generation_prompt=add_generation_prompt
+            )
+            prompt_with_chat_template = tokenizer.apply_chat_template(
+                conversation=base_chat + chat, tools=[func.function for func in self.tool_map.values()], 
+                tokenize=False, add_generation_prompt=add_generation_prompt
+            )
+            prompt_with_chat_template = temp_prompt_with_chat_template.replace(base_prompt, '')
         else:
             raise ValueError('Invalid mode: {}'.format(mode))
         
         return prompt_with_chat_template
+    
+    def pil_to_base64(self, image):
+        img_buffer = io.BytesIO()
+        image.save(img_buffer, format='PNG')
+        img_base64 = base64.b64encode(img_buffer.getvalue()).decode('utf-8')
+        return img_base64
+    
+    def base64_to_pil(self, base64_str):
+        img_data = base64.b64decode(base64_str)
+        image = Image.open(io.BytesIO(img_data))
+        return image
+   
+
+    def is_base64(self, s):
+        head = base64.b64decode(s[:100], validate=True)
+        # 检查常见图片文件头
+        return head.startswith((b'\xff\xd8\xff', b'\x89PNG\r\n\x1a\n', b'GIF87a', b'GIF89a', b'BM'))
