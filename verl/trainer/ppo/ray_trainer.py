@@ -949,6 +949,7 @@ class RayPPOTrainer:
             # breakpoint()
             for batch_dict in self.train_dataloader:
                 # breakpoint()
+                # breakpoint()
                 metrics = {}
                 timing_raw = {}
                 batch: DataProto = DataProto.from_single_dict(batch_dict)

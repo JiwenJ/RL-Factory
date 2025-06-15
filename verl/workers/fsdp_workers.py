@@ -702,8 +702,13 @@ class ActorRolloutRefWorker(Worker):
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
     def generate_sequences_loop(self, prompts: DataProto):
+        # breakpoint()
         # TODO: Temporary fix bus for tp > 1, optimization will be done later
         prompts = prompts.to(torch.cuda.current_device())
+        image_data = [i["image"] for i in prompts.non_tensor_batch["multi_modal_data"]]
+        from PIL import Image
+        from typing import List
+        assert isinstance(image_data, list) and all(isinstance(row, list) and all(isinstance(img, Image.Image) for img in row) for row in image_data), "image_data 不是 List[List[Image.Image]]"
         # breakpoint()
 
         assert self._is_rollout
@@ -736,22 +741,25 @@ class ActorRolloutRefWorker(Worker):
             log_gpu_memory_usage('After entering rollout sharding manager', logger=logger)
             max_turns = self.rollout.config.max_turns
             for step in range(max_turns):
+                breakpoint()
                 prompts = self.rollout_sharding_manager.preprocess_data(prompts)
                 # breakpoint()
-                output = self.rollout.generate_sequences(prompts=prompts)
-
+                output = self.rollout.generate_sequences(prompts=prompts,tokenizer=self.tokenizer)
+                # breakpoint()
                 log_gpu_memory_usage('After rollout generation', logger=logger)
                 output = self.rollout_sharding_manager.postprocess_data(output)
-
                 output = output.to('cpu')
                 output.meta_info.update(prompts.meta_info)
-                if tp_size > 1:
-                    prompts = su.postprocess_output_tp(output, step)
-                else:
-                    prompts = su.postprocess_output(output, step)
-                    if prompts is None:
-                        break
-            
+                # # breakpoint()
+                # if tp_size > 1:
+                #     prompts = su.postprocess_output_tp(output, image_data, step)
+                # else:
+                breakpoint()
+                prompts = su.postprocess_output(prompts, output, image_data, step)
+                breakpoint()
+                if prompts is None:
+                    break
+                # import pdb;pdb.set_trace()
             output = su.compose_final_output(step=step)
 
         output = output.to('cpu')

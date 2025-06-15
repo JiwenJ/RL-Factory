@@ -32,9 +32,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_SYSTEM_CONTENT = "You are a helpful and harmless assistant. "
 instruction_following = (
     "Answer the given question. You must conduct reasoning inside <think> and </think>. "
-    "After reasoning, you must crop it to obtain a clearer view, the format for action is <crop>[left|right|top|down]</crop>. "
-    "For example, <IMG> <think> I think I need to crop the image </think> <crop> right <crop>. Question: "
-
+    "After reasoning, you must use a tool to crop it to obtain a clearer view, the format for action is <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top|down|left|right\"}}</tool_call>. "
+    "For example,  <think> I think I need to crop the image </think> <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top\"}}</tool_call>. Question:"
 )
 
 
@@ -64,7 +63,7 @@ from verl.utils.hdfs_io import copy, makedirs
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_dir", default="/root/autodl-tmp/data/geo3kv4")
+    parser.add_argument("--local_dir", default="/root/autodl-tmp/data/geo3kv5")
     parser.add_argument("--hdfs_dir", default=None)
 
     args = parser.parse_args()
@@ -85,7 +84,7 @@ if __name__ == "__main__":
     def make_map_fn(split):
         def process_fn(example, idx):
             problem = example.pop("problem")
-            prompt = DEFAULT_SYSTEM_CONTENT + instruction_following +  " " + problem
+            prompt = DEFAULT_SYSTEM_CONTENT + instruction_following + problem
             answer = example.pop("answer")
             images = example.pop("images")
 

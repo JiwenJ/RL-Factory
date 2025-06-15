@@ -7,7 +7,8 @@ from verl import DataProto
 from envs.tool_manager import TOOL_MANAGER_REGISTRY
 from verl.utils.model import compute_position_id_with_mask
 from verl.utils.torch_functional import tokenize_and_postprocess_data
-
+from typing import List
+from PIL import Image
 
 class Env(ABC):
     def __init__(self, config, centralized_actor=None):
@@ -84,11 +85,21 @@ class Env(ABC):
     
         return step_reward
 
-    def step(self, responses, tokenizer):
-        breakpoint()
-        cur_actions, tool_results = self.tool_manager.execute_actions(responses=responses)
-        next_obs, dones, valid_action, is_tool = [], [], [], []
+    def step(self, responses, tokenizer, image_data: List[List[Image.Image]]):
+        # mock the data
+        image_data = image_data * 3  # 扩充三倍
+        responses = ["To solve this problem,  <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top\"}}</tool_call> .<|im_end|>" for _ in range(len(responses))]
+        # responses.append("To solve this problem,  <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top\"}}</tool_call> .<|im_end|>")
+       
 
+        # 使用lambda表达式统计包含<tool_call>的response数量
+        tool_call_count = sum(map(lambda response: "<tool_call>" in response, responses))
+        print("tool_call_count: ", tool_call_count, "all responses: ", len(responses))
+        
+        # breakpoint()
+        cur_actions, tool_results = self.tool_manager.execute_actions(responses=responses, image_data=image_data)
+        next_obs, dones, valid_action, is_tool = [], [], [], []
+        # breakpoint()
         for action, tool_result in zip(cur_actions, tool_results):
             if action == 'answer':
                 temp_next_obs, temp_done, temp_valid_action, temp_is_tool = '', True, 1, 0
@@ -115,7 +126,8 @@ class Env(ABC):
             dones.append(temp_done)
             valid_action.append(temp_valid_action)
             is_tool.append(temp_is_tool)
-
+        print("next_obs: ")
+        # breakpoint()
         
         return next_obs, dones, valid_action, is_tool
     
