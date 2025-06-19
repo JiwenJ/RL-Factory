@@ -199,7 +199,7 @@ class ToolUtils:
             skip_special_tokens=False,
         )
 
-        infos_str, dones, _, _ = self.env_object.step(
+        infos_str, dones, _, _, new_image_data = self.env_object.step(
             responses=responses_str, tokenizer=self.tokenizer, image_data=image_data
         )
 
@@ -257,12 +257,15 @@ class ToolUtils:
         raw_prompt_ids[:] = [x[-max_len:] for x in next_prompt_token]
 
         # Filter image_data based on next_sample_idx
-        original_image_duplicate = [[img[0], img[0]] for img in image_data for _ in range(self.rollout_n)]
-        next_image_data = [original_image_duplicate[idx] for idx in next_sample_idx]
+        for idx, image in enumerate(new_image_data):
+            if image is not None:
+                image_data[idx].append(image)
+        breakpoint()
+        next_image_data = [image_data[idx] for idx in next_sample_idx]
         # Convert to the expected format: list of dictionaries with "image" key
         next_image_data = [{"image": img} for img in next_image_data]
         next_image_data = np.array(next_image_data, dtype=object)
-
+        breakpoint()
         next_data = DataProto(batch=next_batch, non_tensor_batch={'raw_prompt_ids': raw_prompt_ids, 'multi_modal_data': next_image_data})
         next_data.meta_info.update(self.meta_info)
         next_data.meta_info['index'] = next_sample_idx

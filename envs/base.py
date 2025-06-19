@@ -98,11 +98,12 @@ class Env(ABC):
         
         # breakpoint()
         cur_actions, tool_results = self.tool_manager.execute_actions(responses=responses, image_data=image_data)
-        next_obs, dones, valid_action, is_tool = [], [], [], []
-        # breakpoint()
+        next_obs, dones, valid_action, is_tool, new_image = [], [], [], [], []
+        
+        breakpoint()
         for action, tool_result in zip(cur_actions, tool_results):
             if action == 'answer':
-                temp_next_obs, temp_done, temp_valid_action, temp_is_tool = '', True, 1, 0
+                temp_next_obs, temp_done, temp_valid_action, temp_is_tool, temp_image_data = '', True, 1, 0, None, None
             elif action == 'error':
                 temp_next_obs = self.tool_manager.get_prompt(
                     input_data=tool_result, 
@@ -110,12 +111,18 @@ class Env(ABC):
                     mode='tool_call', 
                     add_generation_prompt=True
                 )
-                temp_done, temp_valid_action, temp_is_tool = False, 0, 0
+                temp_done, temp_valid_action, temp_is_tool, temp_image_data = False, 0, 0, None, None
             elif action == 'actions':
+                if self._contains_image_simple(tool_result):
+                    mode = 'multimodal_tool_call'
+                    temp_image_data = self._extract_image_data(tool_result)
+                else:
+                    mode = 'tool_call'
+                    temp_image_data = None
                 temp_next_obs = self.tool_manager.get_prompt(
                     input_data=tool_result, 
                     tokenizer=tokenizer,
-                    mode='tool_call',
+                    mode=mode,
                     add_generation_prompt=True
                 )
                 temp_done, temp_valid_action, temp_is_tool = False, 1, 1
@@ -126,10 +133,11 @@ class Env(ABC):
             dones.append(temp_done)
             valid_action.append(temp_valid_action)
             is_tool.append(temp_is_tool)
+            new_image.append(temp_image_data)
         print("next_obs: ")
-        # breakpoint()
+        breakpoint()
         
-        return next_obs, dones, valid_action, is_tool
+        return next_obs, dones, valid_action, is_tool, new_image
     
 
     def compute_score(self, reward_rollout_wg, reward_tokenizer, tokenizer, data: DataProto, if_val=False, use_process_reward=False):
@@ -310,3 +318,97 @@ class Env(ABC):
         # print("solution_str: ", solution_str)
         # return 1.0
         raise NotImplementedError
+
+
+
+    def _contains_image_simple(self, data):
+        """
+        简单的图像检测函数，支持深层嵌套结构
+        
+        Args:
+            data: 要检查的数据，支持以下格式：
+                - PIL.Image对象
+                - 包含PIL.Image的列表或字典
+                - 嵌套的消息格式，如：[{'role': 'tool', 'content': [{'type': 'image_url', 'image': PIL.Image}]}]
+            
+        Returns:
+            bool: 是否包含图像
+        """
+        if isinstance(data, Image.Image):
+            return True
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, Image.Image):
+                    return True
+                elif isinstance(item, dict):
+                    # 检查字典中是否直接包含图像
+                    if 'image' in item and isinstance(item['image'], Image.Image):
+                        return True
+                    # 检查是否为image_url类型
+                    if item.get('type') == 'image_url':
+                        return True
+                    # 递归检查嵌套结构
+                    if self._contains_image_simple(item):
+                        return True
+                elif isinstance(item, list):
+                    # 递归检查嵌套列表
+                    if self._contains_image_simple(item):
+                        return True
+        elif isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, Image.Image):
+                    return True
+                elif key in ['image', 'image_url', 'img'] and value is not None:
+                    # 检查值是否为图像或包含图像信息
+                    if isinstance(value, Image.Image):
+                        return True
+                    elif isinstance(value, str) and value.strip():  # 非空字符串也可能表示图像URL
+                        return True
+                elif isinstance(value, (list, dict)):
+                    # 递归检查嵌套结构
+                    if self._contains_image_simple(value):
+                        return True
+        return False
+
+    def _extract_image_data(self, data):
+        """
+        从数据中提取第一个图像数据
+        
+        Args:
+            data: 包含图像的数据结构
+            
+        Returns:
+            PIL.Image: 提取出的第一个图像，如果没有找到则返回None
+        """
+        if isinstance(data, Image.Image):
+            return data
+        elif isinstance(data, list):
+            for item in data:
+                if isinstance(item, Image.Image):
+                    return item
+                elif isinstance(item, dict):
+                    # 检查字典中是否包含图像
+                    if 'image' in item and isinstance(item['image'], Image.Image):
+                        return item['image']
+                    # 递归提取嵌套结构中的图像
+                    nested_image = self._extract_image_data(item)
+                    if nested_image is not None:
+                        return nested_image
+                elif isinstance(item, list):
+                    # 递归提取嵌套列表中的图像
+                    nested_image = self._extract_image_data(item)
+                    if nested_image is not None:
+                        return nested_image
+        elif isinstance(data, dict):
+            for key, value in data.items():
+                if isinstance(value, Image.Image):
+                    return value
+                elif key in ['image', 'image_url', 'img'] and isinstance(value, Image.Image):
+                    return value
+                elif isinstance(value, (list, dict)):
+                    # 递归提取嵌套结构中的图像
+                    nested_image = self._extract_image_data(value)
+                    if nested_image is not None:
+                        return nested_image
+        
+        return None

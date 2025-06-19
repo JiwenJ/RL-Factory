@@ -126,7 +126,7 @@ class Qwen25VLManager(ToolManager):
                         if isinstance(tool_result, Image.Image):
                             result = [
                                 {"type": "text", "text": "The result of the tool is here. Please check it."},
-                                {"type": "image_url","image": tool_result}
+                                {"type": "image_url", "image": tool_result}
                             ]
                             return result
                         
@@ -339,7 +339,7 @@ class Qwen25VLManager(ToolManager):
     def get_prompt(self, input_data, tokenizer, mode='initial', add_generation_prompt=True):
         # if isinstance(input_data, List) and "image_url" in input_data[0]["content"][1]["type"]:
         #     mode = 'multimodal'
-        assert mode in ['initial', 'tool_call', 'assistant_response','multimodal'], 'Invalid mode: {}'.format(mode)
+        assert mode in ['initial', 'tool_call', 'assistant_response','multimodal_tool_call'], 'Invalid mode: {}'.format(mode)
         base_chat = [
             {'role': SYSTEM, 'content': 'base'},
             {'role': USER, 'content': 'base'},
@@ -372,7 +372,7 @@ class Qwen25VLManager(ToolManager):
                 tokenize=False, add_generation_prompt=add_generation_prompt
             )
             prompt_with_chat_template = temp_prompt_with_chat_template.replace(base_prompt, '')
-        elif mode == 'multimodal':
+        elif mode == 'multimodal_tool_call':
             chat = input_data
             temp_prompt_with_chat_template = tokenizer.apply_chat_template(
                 conversation=base_chat + chat, tools=[func.function for func in self.tool_map.values()], 
