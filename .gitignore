@@ -18,6 +18,8 @@ tensorflow/my_graph/*
 .idea/
 # C extensions
 *.so
+*.png
+*.jpg
 
 # Distribution / packaging
 .Python
