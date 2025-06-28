@@ -85,25 +85,19 @@ class Env(ABC):
     
         return step_reward
 
-    def step(self, responses, tokenizer, image_data: List[List[Image.Image]]):
-        # mock the data
-        image_data = image_data * 3  # 扩充三倍
+    def step(self, responses, tokenizer, image_data: List[List[Image.Image]], processor):
         responses = ["To solve this problem,  <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top\"}}</tool_call> .<|im_end|>" for _ in range(len(responses))]
-        # responses.append("To solve this problem,  <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top\"}}</tool_call> .<|im_end|>")
-       
-
-        # 使用lambda表达式统计包含<tool_call>的response数量
-        tool_call_count = sum(map(lambda response: "<tool_call>" in response, responses))
-        print("tool_call_count: ", tool_call_count, "all responses: ", len(responses))
-        
-        # breakpoint()
+        responses[-1]= "I have solve the problem. <answer> 15 </answer>"
         cur_actions, tool_results = self.tool_manager.execute_actions(responses=responses, image_data=image_data)
         next_obs, dones, valid_action, is_tool, new_image = [], [], [], [], []
+        raw_prompt = []
+        multi_modal_data = []
         
-        breakpoint()
         for action, tool_result in zip(cur_actions, tool_results):
+            raw_next_obs = None
+            temp_multi_modal_data = None
             if action == 'answer':
-                temp_next_obs, temp_done, temp_valid_action, temp_is_tool, temp_image_data = '', True, 1, 0, None, None
+                temp_next_obs, temp_done, temp_valid_action, temp_is_tool, temp_image_data = '', True, 1, 0, None
             elif action == 'error':
                 temp_next_obs = self.tool_manager.get_prompt(
                     input_data=tool_result, 
@@ -111,7 +105,7 @@ class Env(ABC):
                     mode='tool_call', 
                     add_generation_prompt=True
                 )
-                temp_done, temp_valid_action, temp_is_tool, temp_image_data = False, 0, 0, None, None
+                temp_done, temp_valid_action, temp_is_tool, temp_image_data = False, 0, 0, None
             elif action == 'actions':
                 if self._contains_image_simple(tool_result):
                     mode = 'multimodal_tool_call'
@@ -119,12 +113,23 @@ class Env(ABC):
                 else:
                     mode = 'tool_call'
                     temp_image_data = None
-                temp_next_obs = self.tool_manager.get_prompt(
+                raw_next_obs = self.tool_manager.get_prompt(
                     input_data=tool_result, 
                     tokenizer=tokenizer,
+                    processor=processor,
                     mode=mode,
                     add_generation_prompt=True
                 )
+                temp_next_obs = processor(
+                    images=temp_image_data,
+                    text=raw_next_obs,
+                    return_tensors="pt",
+                    truncation=False,
+                    padding=False,
+                )
+                # breakpoint()
+                temp_multi_modal_data = {"pixel_values": temp_next_obs["pixel_values"],"image_grid_thw": temp_next_obs["image_grid_thw"]}
+                temp_next_obs = tokenizer.decode(temp_next_obs["input_ids"][0])
                 temp_done, temp_valid_action, temp_is_tool = False, 1, 1
             else:
                 raise ValueError('Unexpected action: {}'.format(action))
@@ -134,10 +139,15 @@ class Env(ABC):
             valid_action.append(temp_valid_action)
             is_tool.append(temp_is_tool)
             new_image.append(temp_image_data)
+            raw_prompt.append(raw_next_obs)
+            multi_modal_data.append(temp_multi_modal_data)
+            # multi_modal_data.append(temp_model_input)
+            
         print("next_obs: ")
-        breakpoint()
+        # breakpoint()
         
-        return next_obs, dones, valid_action, is_tool, new_image
+        # return next_obs, dones, valid_action, is_tool, new_image, multi_modal_data
+        return next_obs, dones, valid_action, is_tool, new_image, raw_prompt, multi_modal_data
     
 
     def compute_score(self, reward_rollout_wg, reward_tokenizer, tokenizer, data: DataProto, if_val=False, use_process_reward=False):

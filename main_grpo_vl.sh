@@ -1,15 +1,16 @@
 set -e -x
-# source /root/autodl-tmp/env.sh
-export MODEL_PATH=/root/autodl-tmp/models/Qwen/Qwen2.5-VL-3B-Instruct
+export 
+MODEL_PATH=/root/autodl-tmp/models/Qwen/Qwen2.5-VL-3B-Instruct
 export REWARD_MODEL_PATH=/your/path/to/Qwen/QwQ-32B
 export HYDRA_FULL_ERROR=1
-# export VLLM_ATTENTION_BACKEND=XFORMERS
+export RAY_DEDUP_LOGS=0
+
 
 python3 -m verl.trainer.main_ppo\
     algorithm.adv_estimator=grpo\
     data.train_files=/root/autodl-tmp/data/geo3kv5/train.parquet\
     data.val_files=/root/autodl-tmp/data/geo3kv5/test.parquet\
-    data.train_batch_size=6\
+    data.train_batch_size=4\
     data.max_prompt_length=2048\
     data.max_response_length=1024\
     actor_rollout_ref.model.path=$MODEL_PATH\
@@ -28,13 +29,14 @@ python3 -m verl.trainer.main_ppo\
     actor_rollout_ref.rollout.tensor_model_parallel_size=1\
     actor_rollout_ref.rollout.name=vllm\
     actor_rollout_ref.rollout.gpu_memory_utilization=0.7\
-    actor_rollout_ref.rollout.n=1\
-    actor_rollout_ref.rollout.max_turns=3\
+    actor_rollout_ref.rollout.n=2\
+    actor_rollout_ref.rollout.max_turns=2\
     +model.use_liger=True\
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1\
     actor_rollout_ref.ref.fsdp_config.param_offload=False\
     actor_rollout_ref.rollout.enforce_eager=False\
     actor_rollout_ref.rollout.free_cache_engine=False\
+    actor_rollout_ref.rollout.multi_turn.enable=True\
     actor_rollout_ref.env.name=search_vl\
     actor_rollout_ref.env.mcp_mode=stdio\
     actor_rollout_ref.env.tool_manager=qwen2_5_vl\
@@ -57,7 +59,6 @@ python3 -m verl.trainer.main_ppo\
     trainer.val_before_train=False\
     trainer.default_local_dir=ckpt\
     trainer.default_hdfs_dir=null\
-    +trainer.use_process_reward=True\
     trainer.save_freq=20\
     trainer.test_freq=10\
     trainer.total_epochs=5 $@ 2>&1 | tee grpo.log

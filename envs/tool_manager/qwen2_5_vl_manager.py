@@ -122,11 +122,12 @@ class Qwen25VLManager(ToolManager):
                             tool["name"], image_data
                         )
                         # tool_result = self.base64_to_pil(tool_result)
+                        assert isinstance(tool_result, Image.Image), f"tool_result is not a PIL.Image.Image instance, got {type(tool_result)}"
                         # breakpoint()
                         if isinstance(tool_result, Image.Image):
                             result = [
                                 {"type": "text", "text": "The result of the tool is here. Please check it."},
-                                {"type": "image_url", "image": tool_result}
+                                {"type": "image", "image": tool_result}
                             ]
                             return result
                         
@@ -336,7 +337,7 @@ class Qwen25VLManager(ToolManager):
 
         return parsed_tools
     
-    def get_prompt(self, input_data, tokenizer, mode='initial', add_generation_prompt=True):
+    def get_prompt(self, input_data, tokenizer, processor, mode='initial', add_generation_prompt=True):
         # if isinstance(input_data, List) and "image_url" in input_data[0]["content"][1]["type"]:
         #     mode = 'multimodal'
         assert mode in ['initial', 'tool_call', 'assistant_response','multimodal_tool_call'], 'Invalid mode: {}'.format(mode)
@@ -378,10 +379,6 @@ class Qwen25VLManager(ToolManager):
                 conversation=base_chat + chat, tools=[func.function for func in self.tool_map.values()], 
                 tokenize=False, add_generation_prompt=add_generation_prompt
             )
-            prompt_with_chat_template = tokenizer.apply_chat_template(
-                conversation=base_chat + chat, tools=[func.function for func in self.tool_map.values()], 
-                tokenize=False, add_generation_prompt=add_generation_prompt
-            )
             prompt_with_chat_template = temp_prompt_with_chat_template.replace(base_prompt, '')
         else:
             raise ValueError('Invalid mode: {}'.format(mode))
@@ -397,6 +394,7 @@ class Qwen25VLManager(ToolManager):
     def base64_to_pil(self, base64_str):
         img_data = base64.b64decode(base64_str)
         image = Image.open(io.BytesIO(img_data))
+        assert isinstance(image, Image.Image), "image is not an Image.Image"
         return image
    
 
@@ -404,3 +402,46 @@ class Qwen25VLManager(ToolManager):
         head = base64.b64decode(s[:100], validate=True)
         # 检查常见图片文件头
         return head.startswith((b'\xff\xd8\xff', b'\x89PNG\r\n\x1a\n', b'GIF87a', b'GIF89a', b'BM'))
+    
+    def _extract_image_data(self, data):
+            """
+            从数据中提取第一个图像数据
+            
+            Args:
+                data: 包含图像的数据结构
+                
+            Returns:
+                PIL.Image: 提取出的第一个图像，如果没有找到则返回None
+            """
+            if isinstance(data, Image.Image):
+                return data
+            elif isinstance(data, list):
+                for item in data:
+                    if isinstance(item, Image.Image):
+                        return item
+                    elif isinstance(item, dict):
+                        # 检查字典中是否包含图像
+                        if 'image' in item and isinstance(item['image'], Image.Image):
+                            return item['image']
+                        # 递归提取嵌套结构中的图像
+                        nested_image = self._extract_image_data(item)
+                        if nested_image is not None:
+                            return nested_image
+                    elif isinstance(item, list):
+                        # 递归提取嵌套列表中的图像
+                        nested_image = self._extract_image_data(item)
+                        if nested_image is not None:
+                            return nested_image
+            elif isinstance(data, dict):
+                for key, value in data.items():
+                    if isinstance(value, Image.Image):
+                        return value
+                    elif key in ['image', 'image_url', 'img'] and isinstance(value, Image.Image):
+                        return value
+                    elif isinstance(value, (list, dict)):
+                        # 递归提取嵌套结构中的图像
+                        nested_image = self._extract_image_data(value)
+                        if nested_image is not None:
+                            return nested_image
+            
+            return None

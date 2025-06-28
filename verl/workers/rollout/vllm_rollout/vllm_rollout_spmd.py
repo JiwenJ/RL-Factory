@@ -67,11 +67,58 @@ def _pre_process_inputs(pad_token_id, prompt_token_ids: torch.Tensor) -> List[in
     return token_ids
 
 
+def _deep_copy_value(val):
+    """深拷贝各种类型的值，特别处理PIL.Image等特殊对象"""
+    try:
+        # 检查是否是PIL.Image或其他有copy方法的对象
+        if hasattr(val, 'copy') and hasattr(val, 'mode'):  # PIL.Image特征
+            return val.copy()
+        elif isinstance(val, list):
+            # 处理列表，递归深拷贝每个元素
+            return [_deep_copy_value(item) for item in val]
+        elif isinstance(val, dict):
+            # 处理字典，递归深拷贝每个值
+            return {key: _deep_copy_value(value) for key, value in val.items()}
+        elif isinstance(val, tuple):
+            # 处理元组
+            return tuple(_deep_copy_value(item) for item in val)
+        else:
+            # 其他类型使用标准深拷贝
+            return deepcopy(val)
+    except Exception:
+        # 如果深拷贝失败，尝试使用copy方法或返回原对象
+        if hasattr(val, 'copy'):
+            return val.copy()
+        else:
+            return val
+
+
 def _repeat_interleave(value: Union[torch.Tensor, np.ndarray], repeats: int) -> Union[torch.Tensor, List[Any]]:
     if isinstance(value, torch.Tensor):
-        return value.repeat_interleave(repeats, dim=0)
+        # 使用 clone() 确保深拷贝，避免内存共享
+        return value.clone().repeat_interleave(repeats, dim=0)
+    elif isinstance(value, np.ndarray):
+        # 检查是否是包含复杂对象的numpy数组
+        if value.dtype == object:
+            # 对于包含复杂对象（如PIL.Image、字典等）的numpy数组，需要特殊处理
+            # 形式: [A,B] -> [A,A,B,B] (每个元素重复repeats次)
+            repeated_list = []
+            for item in value:
+                for _ in range(repeats):
+                    # 使用辅助函数深拷贝复杂对象
+                    repeated_list.append(_deep_copy_value(item))
+            return np.array(repeated_list, dtype=object)
+        else:
+            # 对于普通numpy数组，使用copy()后重复
+            return np.repeat(value.copy(), repeats, axis=0)
     else:
-        return np.repeat(value, repeats, axis=0)
+        # 对其他类型（如列表等）使用深拷贝后重复
+        # 形式: [A,B] -> [A,A,B,B] (每个元素重复repeats次)
+        repeated_list = []
+        for item in value:
+            for _ in range(repeats):
+                repeated_list.append(deepcopy(item))
+        return repeated_list
 
 
 class vLLMRollout(BaseRollout):
@@ -290,7 +337,7 @@ class vLLMRollout(BaseRollout):
                 lora_int_id = lora_int_ids[0]
                 lora_requests = [LoRARequest(lora_name=f"{lora_int_id}", lora_int_id=lora_int_id, lora_path="/simon-stub-path")] * batch_size
         # users can customize different sampling_params at different run
-        breakpoint()
+        # breakpoint()
         with self.update_sampling_params(**kwargs):
             outputs = self.inference_engine.generate(prompts=vllm_inputs,sampling_params=self.sampling_params,lora_request=lora_requests,use_tqdm=False)
             # breakpoint()
@@ -320,8 +367,15 @@ class vLLMRollout(BaseRollout):
                 # NOTE(linjunrong): for multi-turn https://github.com/volcengine/verl/pull/1037
                 if "tools_kwargs" in non_tensor_batch.keys():
                     non_tensor_batch["tools_kwargs"] = _repeat_interleave(non_tensor_batch["tools_kwargs"], self.sampling_params.n)
-
+                if "multi_modal_data" in non_tensor_batch.keys():
+                    non_tensor_batch["multi_modal_data"] = _repeat_interleave(non_tensor_batch["multi_modal_data"], self.sampling_params.n)
+                    # breakpoint()
+                    non_tensor_batch["multi_modal_inputs"] = _repeat_interleave(non_tensor_batch["multi_modal_inputs"], self.sampling_params.n)
+                if "raw_prompt_ids" in non_tensor_batch.keys():
+                    non_tensor_batch["raw_prompt_ids"] = _repeat_interleave(non_tensor_batch["raw_prompt_ids"], self.sampling_params.n)                                     
+            # breakpoint()
             seq = torch.cat([idx, response], dim=-1)
+            # breakpoint()
 
         response_length = response.size(1)
         delta_position_id = torch.arange(1, response_length + 1, device=position_ids.device)

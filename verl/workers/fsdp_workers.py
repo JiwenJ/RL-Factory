@@ -705,11 +705,12 @@ class ActorRolloutRefWorker(Worker):
         # breakpoint()
         # TODO: Temporary fix bus for tp > 1, optimization will be done later
         prompts = prompts.to(torch.cuda.current_device())
-        image_data = [i["image"] for i in prompts.non_tensor_batch["multi_modal_data"]]
-        from PIL import Image
-        from typing import List
-        assert isinstance(image_data, list) and all(isinstance(row, list) and all(isinstance(img, Image.Image) for img in row) for row in image_data), "image_data 不是 List[List[Image.Image]]"
         # breakpoint()
+        # image_data = [i["image"] for i in prompts.non_tensor_batch["multi_modal_data"]]
+        # from PIL import Image
+        # from typing import List
+        # assert isinstance(image_data, list) and all(isinstance(row, list) and all(isinstance(img, Image.Image) for img in row) for row in image_data), "image_data 不是 List[List[Image.Image]]"
+        # # breakpoint()
 
         assert self._is_rollout
         if self._is_offload_param:
@@ -727,7 +728,7 @@ class ActorRolloutRefWorker(Worker):
         prompts.meta_info.update(meta_info)
         prompts.non_tensor_batch.pop("tools_kwargs")
 
-        su = ToolUtils(self.tokenizer, meta_info, self.rollout.config, env_object=self.env_object)
+        su = ToolUtils(self.tokenizer, self.processor, meta_info, self.rollout.config, env_object=self.env_object)
         tp_size = self.config.rollout.tensor_model_parallel_size
 
         with self.rollout_sharding_manager:
@@ -741,7 +742,7 @@ class ActorRolloutRefWorker(Worker):
             log_gpu_memory_usage('After entering rollout sharding manager', logger=logger)
             max_turns = self.rollout.config.max_turns
             for step in range(max_turns):
-                breakpoint()
+                # breakpoint()
                 prompts = self.rollout_sharding_manager.preprocess_data(prompts)
                 # breakpoint()
                 output = self.rollout.generate_sequences(prompts=prompts,tokenizer=self.tokenizer)
@@ -750,13 +751,9 @@ class ActorRolloutRefWorker(Worker):
                 output = self.rollout_sharding_manager.postprocess_data(output)
                 output = output.to('cpu')
                 output.meta_info.update(prompts.meta_info)
-                # # breakpoint()
-                # if tp_size > 1:
-                #     prompts = su.postprocess_output_tp(output, image_data, step)
-                # else:
-                breakpoint()
-                prompts = su.postprocess_output(prompts, output, image_data, step)
-                breakpoint()
+                # breakpoint()
+                prompts = su.postprocess_output(output, step)
+                # breakpoint()
                 if prompts is None:
                     break
                 # import pdb;pdb.set_trace()

@@ -237,9 +237,11 @@ class RLHFDataset(Dataset):
             left_pad=True,
             truncation=self.truncation,
         )
-
-        if self.processor is not None and self.processor.image_processor.__class__.__name__ == "Qwen2VLImageProcessor":
-            from verl.models.transformers.qwen2_vl import get_rope_index
+        # breakpoint()
+        # if self.processor is not None and self.processor.image_processor.__class__.__name__ == "Qwen2VLImageProcessor":
+        if self.processor is not None:
+            from verl.models.transformers.qwen2_vl import get_rope_index, get_rope_index_2
+            # from verl.models.transformers.qwen2_5_vl import get_rope_index_25
 
             position_ids = [
                 get_rope_index(
@@ -252,9 +254,21 @@ class RLHFDataset(Dataset):
                 )
             ]  # (1, 3, seq_len)
 
+
+            # breakpoint()
+            # position_ids_tmp = [
+            #     get_rope_index_2(
+            #         spatial_merge_size=2,
+            #         input_ids=input_ids,
+            #         image_grid_thw=model_inputs.get("image_grid_thw"),
+            #     )
+            # ]  # (3, 1, seq_len)
+            # assert position_ids == position_ids_tmp
+            # breakpoint()
+
         else:
             position_ids = compute_position_id_with_mask(attention_mask)
-
+        # breakpoint()
         row_dict["input_ids"] = input_ids[0]
         row_dict["attention_mask"] = attention_mask[0]
         row_dict["position_ids"] = position_ids[0]
