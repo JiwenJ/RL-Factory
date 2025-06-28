@@ -131,4 +131,4 @@ outputs
 tensorboard_log
 ckpt
 
-.hopeignore
+.hopeignore*.whl
