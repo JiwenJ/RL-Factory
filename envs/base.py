@@ -86,8 +86,9 @@ class Env(ABC):
         return step_reward
 
     def step(self, responses, tokenizer, image_data: List[List[Image.Image]], processor):
-        responses = ["To solve this problem,  <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top\"}}</tool_call> .<|im_end|>" for _ in range(len(responses))]
-        responses[-1]= "I have solve the problem. <answer> 15 </answer>"
+        # breakpoint()
+        # responses = ["To solve this problem,  <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top\"}}</tool_call> .<|im_end|>" for _ in range(len(responses))]
+        # responses[-1]= "I have solve the problem. <answer> 15 </answer>"
         cur_actions, tool_results = self.tool_manager.execute_actions(responses=responses, image_data=image_data)
         next_obs, dones, valid_action, is_tool, new_image = [], [], [], [], []
         raw_prompt = []
@@ -110,26 +111,36 @@ class Env(ABC):
                 if self._contains_image_simple(tool_result):
                     mode = 'multimodal_tool_call'
                     temp_image_data = self._extract_image_data(tool_result)
+                    raw_next_obs = self.tool_manager.get_prompt(
+                        input_data=tool_result, 
+                        tokenizer=tokenizer,
+                        processor=processor,
+                        mode=mode,
+                        add_generation_prompt=True
+                    )
+                    # breakpoint()
+                    temp_next_obs = processor(
+                        images=temp_image_data,
+                        text=raw_next_obs,
+                        return_tensors="pt",
+                        truncation=False,
+                        padding=False,
+                    )                
+                    try:
+                        temp_multi_modal_data = {"pixel_values": temp_next_obs["pixel_values"],"image_grid_thw": temp_next_obs["image_grid_thw"]}
+                    except:
+                        breakpoint()
+                    temp_next_obs = tokenizer.decode(temp_next_obs["input_ids"][0])
                 else:
                     mode = 'tool_call'
                     temp_image_data = None
-                raw_next_obs = self.tool_manager.get_prompt(
-                    input_data=tool_result, 
-                    tokenizer=tokenizer,
-                    processor=processor,
-                    mode=mode,
-                    add_generation_prompt=True
-                )
-                temp_next_obs = processor(
-                    images=temp_image_data,
-                    text=raw_next_obs,
-                    return_tensors="pt",
-                    truncation=False,
-                    padding=False,
-                )
-                # breakpoint()
-                temp_multi_modal_data = {"pixel_values": temp_next_obs["pixel_values"],"image_grid_thw": temp_next_obs["image_grid_thw"]}
-                temp_next_obs = tokenizer.decode(temp_next_obs["input_ids"][0])
+                    temp_next_obs = self.tool_manager.get_prompt(
+                        input_data=tool_result, 
+                        tokenizer=tokenizer,
+                        processor=processor,
+                        mode=mode,
+                        add_generation_prompt=True
+                    )
                 temp_done, temp_valid_action, temp_is_tool = False, 1, 1
             else:
                 raise ValueError('Unexpected action: {}'.format(action))
@@ -141,6 +152,9 @@ class Env(ABC):
             new_image.append(temp_image_data)
             raw_prompt.append(raw_next_obs)
             multi_modal_data.append(temp_multi_modal_data)
+
+            
+
             # multi_modal_data.append(temp_model_input)
             
         print("next_obs: ")

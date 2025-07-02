@@ -192,14 +192,14 @@ class vLLMRollout(BaseRollout):
         engine_kwargs = {key: val for key, val in engine_kwargs.items() if val is not None}
         if config.get("limit_images", None):  # support for multi-image data
             engine_kwargs["limit_mm_per_prompt"] = {"image": config.get("limit_images")}
-
+        # breakpoint()
         self.inference_engine = LLM(
             model=model_path,
             enable_sleep_mode=True,
             tensor_parallel_size=tensor_parallel_size,
             distributed_executor_backend="external_launcher",
             dtype=config.dtype,
-            enforce_eager=config.enforce_eager,
+            enforce_eager=True,
             gpu_memory_utilization=config.gpu_memory_utilization,
             disable_custom_all_reduce=True,
             disable_mm_preprocessor_cache=True,
@@ -210,11 +210,12 @@ class vLLMRollout(BaseRollout):
             max_num_batched_tokens=max_num_batched_tokens,
             enable_chunked_prefill=config.enable_chunked_prefill,
             enable_prefix_caching=True,
-            trust_remote_code=trust_remote_code,
+            trust_remote_code=True,
             seed=config.get("seed", 0),
             **lora_kwargs,
             **engine_kwargs,
         )
+        # breakpoint()
 
         # Offload vllm model to reduce peak memory usage
         self.inference_engine.sleep(level=1)

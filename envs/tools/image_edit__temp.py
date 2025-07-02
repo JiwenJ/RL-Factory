@@ -6,7 +6,44 @@ import base64
 # Initialize MCP server
 mcp = FastMCP("ImageEditServer")
 
+def focus_on_x_values_with_mask(image, x_values_to_focus_on, all_x_values_bounding_boxes):
+    """
+    This function is useful when you want to focus on some specific x values in the image.
+    It does this by masking out the x values that are not needed.
+    This function is especially useful for vertical bar charts.
+    For example, you can focus on the x values in a chart that are relevant to your analysis and ignore the rest.
+    Return the masked image.
 
+    Args:
+        image (PIL.Image.Image): the input image
+        x_values_to_focus_on (List[str]): a list of x values to focus on. 
+        all_x_values_bounding_boxes (Dict[Dict]): a dictionary of bounding boxes for all x values in the image. key is x value and value is the bounding box of that x value. Each bounding box is in the format {'x1': x1, 'y1': y1, 'x2': x2, 'y2': y2}.
+    
+    Returns:
+        image_with_focused_x_values (PIL.Image.Image): the image with specified x values focused on
+
+    Example:
+        image = Image.open("sample_img.jpg")
+        image_with_focused_x_values = focus_on_x_values(image, ["2005", "2006"], {"2005": {'x1': 0.1, 'y1': 0.1, 'x2': 0.3, 'y2': 0.9}, "2006": {'x1': 0.4, 'y1': 0.1, 'x2': 0.6, 'y2': 0.9}, "2007": {'x1': 0.7, 'y1': 0.1, 'x2': 0.9, 'y2': 0.9}})
+        display(image_with_focused_x_values)
+    """
+    # Convert image to RGBA if it's not already
+    if image.mode != "RGBA":
+        image = image.convert("RGBA")
+    
+    # Create a drawing context for the image
+    draw = ImageDraw.Draw(image, "RGBA")
+
+    # Desipte the x values to focus on, mask out all other x values
+    x_values_to_mask = [x_value for x_value in all_x_values_bounding_boxes if x_value not in x_values_to_focus_on]
+    if len(x_values_to_mask) == len(all_x_values_bounding_boxes):
+        return image
+    
+    # Iterate over the x values to mask out
+
+    draw.rectangle(((100, 100), (120, 120)), fill="black")
+    
+    return image
 
 @mcp.tool()
 def edit_image_pil(img_base64: str, instruction: str) -> str:

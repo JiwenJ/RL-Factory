@@ -99,10 +99,10 @@ class SearchEnvVL(Env):
             """
             answer = extract_solution(solution_str=solution_str)
             do_print = random.randint(1, 64) == 1
-            
+            # breakpoint()
             if do_print:
                 print(f"--------------------------------")
-                print(f"Golden answers: {ground_truth['target']}")
+                print(f"Golden answers: {ground_truth}")
                 print(f"Extracted answer: {answer}")
                 print(f"Solution string: {solution_str}")
             
@@ -137,7 +137,7 @@ class SearchEnvVL(Env):
             if answer is None:
                 return -1 * format_score + 0.5 * total_format_score
             else:
-                if em_check(answer, ground_truth['target']):
+                if em_check(answer, ground_truth):
                     return score + 0.5 * total_format_score
                 else:
                     return total_format_score
@@ -166,7 +166,7 @@ class SearchEnvVL(Env):
         scores = []
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
-            
+            # breakpoint()
             # process the data_item to the token and decode them
             processed_data = self._process_data(data_item=data_item, tokenizer=tokenizer)
             ground_truth, response_str = processed_data['ground_truth'], processed_data['response_str']

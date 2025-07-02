@@ -589,6 +589,7 @@ class RayPPOTrainer:
         sample_scores = []
 
         for test_data in self.val_dataloader:
+            # breakpoint()
             test_batch = DataProto.from_single_dict(test_data)
 
             # repeat test batch
@@ -624,6 +625,7 @@ class RayPPOTrainer:
                 "do_sample": self.config.actor_rollout_ref.rollout.val_kwargs.do_sample,
                 "validate": True,
             }
+            
             print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
             # pad to be divisible by dp_size
@@ -937,6 +939,7 @@ class RayPPOTrainer:
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get("val_only", False):
                 return
+        # breakpoint()
 
         # add tqdm
         progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")

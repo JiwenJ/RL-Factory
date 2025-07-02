@@ -251,7 +251,7 @@ class ToolUtils:
             process_response,
             skip_special_tokens=False,
         )
-
+        
         infos_str, dones, _, _ = self.env_object.step(
             responses=responses_str, tokenizer=self.tokenizer, image_data=image_data
         )
@@ -370,7 +370,7 @@ class ToolUtils:
             process_response,
             skip_special_tokens=False,
         )
-        
+        # breakpoint()
         infos_str, dones, _, _, new_image_data, raw_prompt, multi_modal_data = self.env_object.step(
             responses=responses_str, tokenizer=self.tokenizer, image_data=self.image_list, processor=self.processor
         )
@@ -383,10 +383,17 @@ class ToolUtils:
 
 
         def tokenize_infos(infos_str):
+            if infos_str == "":
+                return []
+            if infos_str is None:
+                return []
             # if self.processor:
             #     info_tokens = self.processor(text=infos_str, images=new_image_data, return_tensors="pt").input_ids
             # else:
-            info_tokens = self.tokenizer(infos_str).input_ids
+            try:
+                info_tokens = self.tokenizer(text=infos_str).input_ids
+            except:
+                breakpoint()
             return info_tokens
 
         next_prompt_token = []
@@ -415,7 +422,7 @@ class ToolUtils:
                 # append the new image from tool call
                 if new_image_data[idx] is not None:
                     self.image_list[idx].append(new_image_data[idx])
-                    next_image_data.append(self.image_list[idx])
+                next_image_data.append(self.image_list[idx])
         # breakpoint()
         if len(next_prompt_token) == 0:
             return 
@@ -445,7 +452,7 @@ class ToolUtils:
 
         next_image_data = np.array([{"image": img} for img in next_image_data], dtype=object)
         # next_multi_modal_data = np.array(next_multi_modal_data, dtype=object)
-        # breakpoint()
+        breakpoint()
         next_data = DataProto(batch=next_batch, non_tensor_batch={'raw_prompt_ids': raw_prompt_ids, 'multi_modal_data': next_image_data, })
         next_data.meta_info.update(self.meta_info)
         next_data.meta_info['index'] = next_sample_idx
@@ -532,7 +539,7 @@ class ToolUtils:
             
         else:
             position_ids = torch.clip(torch.cumsum(attention_mask, dim=-1) - 1, min=0, max=None) * attention_mask
-        with open('/root/autodl-tmp/RL-Factory/tmp/tensor_debug.txt', 'w') as f: f.write(str(position_ids))
+        # with open('/root/autodl-tmp/RL-Factory/tmp/tensor_debug.txt', 'w') as f: f.write(str(position_ids))
         loss_mask = torch.cat([torch.zeros_like(self.init_attention_mask, dtype=torch.float32), response_loss_mask], dim=-1)
         # breakpoint()
         final_batch = TensorDict(

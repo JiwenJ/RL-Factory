@@ -105,10 +105,12 @@ class Qwen25VLManager(ToolManager):
             工具执行结果的列表
         """        
         async def execute_single_tool(tool, image_data:Image.Image):
+            # breakpoint()
             
             tool_instance = self.get_tool(tool["name"])
             args = tool["args"]
             if tool_instance is not None:
+                # breakpoint()
                 try:
                     args = json.loads(args)
                 except Exception as e:
@@ -215,6 +217,8 @@ class Qwen25VLManager(ToolManager):
                 tool_name = tool.name
                 if tool_name == 'image_edit-image_edit':
                     tool_name = 'image_edit'
+                if tool_name == 'image_flip-image_flip':
+                    tool_name = 'image_flip'
                 self.tool_map[tool_name] = tool
         else:
             if isinstance(tool, dict):
@@ -241,6 +245,8 @@ class Qwen25VLManager(ToolManager):
             tools.append(temp_tool_list)
 
         # 使用asyncio.run同步运行异步函数
+        # breakpoint()
+        # print("ddwdw")
         try:
             tool_results = asyncio.run(self.execute_all_tools(actions, tools, image_data))
         except RuntimeError:

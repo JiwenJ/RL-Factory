@@ -17,7 +17,7 @@ import argparse
 import logging
 import os
 import tempfile
-
+import random
 import pandas as pd
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import EntryNotFoundError
@@ -29,13 +29,16 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Configuration constants
-DEFAULT_SYSTEM_CONTENT = "You are a helpful and harmless assistant. "
+# DEFAULT_SYSTEM_CONTENT = "You are a helpful and harmless assistant. "
+# instruction_following = (
+#     "You are a math expert. Answer the given question. You must conduct reasoning inside <think> and </think>. "
+#     "After reasoning, if you can not get the anwser, the format for action is <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top|down|left|right\"}}</tool_call>. "
+#     "For example,  <think> I think I need to crop the image </think> <tool_call>{\"name\":\"image_flip\", \"arguments\": {\"instruction\": \"top\"}}</tool_call>. Question:"
+# )
 instruction_following = (
-    "Answer the given question. You must conduct reasoning inside <think> and </think>. "
-    "After reasoning, you must use a tool to crop it to obtain a clearer view, the format for action is <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top|down|left|right\"}}</tool_call>. "
-    "For example,  <think> I think I need to crop the image </think> <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top\"}}</tool_call>. Question:"
+    r"You FIRST think about the reasoning process as an internal monologue and make necessary tool call, then provide the final answer. "
+    r"The reasoning process MUST BE enclosed within <think> </think> tags. The tool call MUST BE enclosed within <tool_call> </tool_call> tags. The final answer MUST BE put in <anwser></anwser>."
 )
-
 
 # Copyright 2024 Bytedance Ltd. and/or its affiliates
 #
@@ -63,7 +66,7 @@ from verl.utils.hdfs_io import copy, makedirs
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_dir", default="/root/autodl-tmp/data/geo3kv5")
+    parser.add_argument("--local_dir", default="/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/geo3kv11")
     parser.add_argument("--hdfs_dir", default=None)
 
     args = parser.parse_args()
@@ -84,17 +87,33 @@ if __name__ == "__main__":
     def make_map_fn(split):
         def process_fn(example, idx):
             problem = example.pop("problem")
-            prompt = DEFAULT_SYSTEM_CONTENT + instruction_following + problem
+            prompt = problem + " " + instruction_following
             answer = example.pop("answer")
             images = example.pop("images")
+            angle = random.choice([0, 90, 180, 270])
+            # breakpoint()
+            # Rotate the image
+            images = [images[0].rotate(angle, expand=True)]
+            # breakpoint()
+            
 
             data = {
                 "data_source": data_source,
                 "prompt": [
                     {
+                        "role": "system",
+                        "content": (
+                            "You are a math expert. You are given a question and a image, you need to anwser the question based on the image information. "
+                            "You have the `image_flip` tool to rotate the image correctly, and before arriving at the final anwser you should first determine whether to make tool call or not to help you undetstand the image. "
+                            "If need tool help, you should call the tool first and wait for tool response, otherwise you can generate the final anwser directly. Each time you MUST call one tool or generate the final anwser."
+                            "You MUST NOT call two tool. The format for action is <tool_call>{\"name\":\"image_flip\", \"arguments\": {\"instruction\": \"top|down|left|right\"}}</tool_call>. "
+                            "For example,  <think> I think I need to rotate the image </think> <tool_call>{\"name\":\"image_flip\", \"arguments\": {\"instruction\": \"top\"}}</tool_call>."
+)
+                    },
+                    {
                         "role": "user",
                         "content": prompt,
-                    }
+                    },
                 ],
                 "images": images,
                 "ability": "math",
@@ -110,8 +129,8 @@ if __name__ == "__main__":
 
         return process_fn
 
-    train_dataset = train_dataset.map(function=make_map_fn("train"), with_indices=True, num_proc=8)
-    test_dataset = test_dataset.map(function=make_map_fn("test"), with_indices=True, num_proc=8)
+    train_dataset = train_dataset.map(function=make_map_fn("train"), with_indices=True, num_proc=20)
+    test_dataset = test_dataset.map(function=make_map_fn("test"), with_indices=True, num_proc=20)
 
     local_dir = args.local_dir
     hdfs_dir = args.hdfs_dir
