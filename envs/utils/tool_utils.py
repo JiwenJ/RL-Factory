@@ -452,7 +452,7 @@ class ToolUtils:
 
         next_image_data = np.array([{"image": img} for img in next_image_data], dtype=object)
         # next_multi_modal_data = np.array(next_multi_modal_data, dtype=object)
-        breakpoint()
+        # breakpoint()
         next_data = DataProto(batch=next_batch, non_tensor_batch={'raw_prompt_ids': raw_prompt_ids, 'multi_modal_data': next_image_data, })
         next_data.meta_info.update(self.meta_info)
         next_data.meta_info['index'] = next_sample_idx

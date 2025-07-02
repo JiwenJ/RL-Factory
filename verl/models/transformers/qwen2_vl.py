@@ -149,7 +149,7 @@ def get_rope_index_2(
                     video_index += 1
                     remain_videos -= 1
                     ed = ed_video
-                breakpoint()
+                # breakpoint()
                 llm_grid_t, llm_grid_h, llm_grid_w = (
                     t.item(),
                     h.item() // spatial_merge_size,
