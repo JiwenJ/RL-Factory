@@ -228,7 +228,7 @@ class RLHFDataset(Dataset):
             model_inputs = self.tokenizer(raw_prompt, return_tensors="pt", add_special_tokens=False)
             input_ids = model_inputs.pop("input_ids")
             attention_mask = model_inputs.pop("attention_mask")
-
+        # breakpoint()
         input_ids, attention_mask = verl_F.postprocess_data(
             input_ids=input_ids,
             attention_mask=attention_mask,

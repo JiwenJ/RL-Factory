@@ -45,7 +45,7 @@ import base64
 # # Initialize MCP server
 mcp = FastMCP("ImageEditServer")
 @mcp.tool()
-def image_flip(img_base64: str=None, instruction: str=None) -> str:
+def rotate(img_base64: str=None, degree: int=None) -> str:
     """Flip or rotate a Pillow image based on natural language instructions
     
     Args:
@@ -62,16 +62,16 @@ def image_flip(img_base64: str=None, instruction: str=None) -> str:
     
     # Determine rotation angle based on instruction
     angle = 0
-    if instruction:
-        instruction = instruction.lower().strip()
-        if instruction == 'top':
-            angle = 0
-        elif instruction == 'down':
-            angle = 180
-        elif instruction == 'left':
-            angle = 270
-        elif instruction == 'right':
-            angle = 90
+    if degree:
+        angle = degree
+        # if instruction == 'top':
+        #     angle = 0
+        # elif instruction == 'down':
+        #     angle = 180
+        # elif instruction == 'left':
+        #     angle = 270
+        # elif instruction == 'right':
+        #     angle = 90
     
     # Rotate the image
     rotated_img = img.rotate(angle, expand=True)

@@ -121,6 +121,18 @@ class ActorRolloutRefWorker(Worker):
         dp = world_size // self.ulysses_sequence_parallel_size
         if self.ulysses_sequence_parallel_size > 1:
             self.ulysses_device_mesh = init_device_mesh(device_name, mesh_shape=(dp, self.ulysses_sequence_parallel_size), mesh_dim_names=["dp", "sp"])
+        
+        # init tp group for generate_sequences_loop
+        tp_size = self.config.rollout.tensor_model_parallel_size
+        if tp_size > 1:
+            num_tp_groups = world_size // tp_size
+            for i in range(num_tp_groups):
+                ranks = range(i * tp_size, (i + 1) * tp_size)
+                tp_group = torch.distributed.new_group(ranks)
+                if self.rank in ranks:
+                    self.tp_group = tp_group
+                    self.tp_master_rank = i * tp_size
+
 
         self.ulysses_sharding_manager = FSDPUlyssesShardingManager(self.ulysses_device_mesh)
         self._lora_rank = self.config.model.get("lora_rank", 0)
@@ -742,22 +754,37 @@ class ActorRolloutRefWorker(Worker):
 
             log_gpu_memory_usage('After entering rollout sharding manager', logger=logger)
             max_turns = self.rollout.config.max_turns
+            is_worker_done = False
             for step in range(max_turns):
-                # breakpoint()
-                prompts = self.rollout_sharding_manager.preprocess_data(prompts)
-                # breakpoint()
-                output = self.rollout.generate_sequences(prompts=prompts,tokenizer=self.tokenizer)
-                # breakpoint()
-                log_gpu_memory_usage('After rollout generation', logger=logger)
-                output = self.rollout_sharding_manager.postprocess_data(output)
-                output = output.to('cpu')
-                output.meta_info.update(prompts.meta_info)
-                # breakpoint()
-                prompts = su.postprocess_output(output, step)
-                # breakpoint()
-                if prompts is None:
+                if not is_worker_done:
+                    # breakpoint()
+                    prompts = self.rollout_sharding_manager.preprocess_data(prompts)
+                    # breakpoint()
+                    output = self.rollout.generate_sequences(prompts=prompts,tokenizer=self.tokenizer,step=step)
+                    # breakpoint()
+                    log_gpu_memory_usage('After rollout generation', logger=logger)
+                    output = self.rollout_sharding_manager.postprocess_data(output)
+                    output = output.to('cpu')
+                    output.meta_info.update(prompts.meta_info)
+                    # breakpoint()
+                    if self.config.rollout.tensor_model_parallel_size > 1:
+                        # broadcast the output from tp master to all other ranks in the tp group
+                        # to avoid hang in compose_final_output
+                        obj_list = [output]
+                        dist.broadcast_object_list(obj_list, src=self.tp_master_rank, group=self.tp_group)
+                        output = obj_list[0]
+                    prompts = su.postprocess_output(output, step)
+                    
+                    if prompts is None:
+                        is_worker_done = True
+                
+                # Synchronize done status across all workers
+                done_tensor = torch.tensor([1 if is_worker_done else 0], device=torch.cuda.current_device())
+                dist.all_reduce(done_tensor, op=dist.ReduceOp.SUM)
+
+                if done_tensor.item() == dist.get_world_size():
                     break
-                # import pdb;pdb.set_trace()
+                
             output = su.compose_final_output(step=step)
 
         output = output.to('cpu')

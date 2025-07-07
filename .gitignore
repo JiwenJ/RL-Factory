@@ -8,7 +8,8 @@
 **/*.tar.gz
 **/playground
 **/wandb
-
+github/*
+ckpts/*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -130,5 +131,6 @@ log
 outputs
 tensorboard_log
 ckpt
-
+ckpts
+test
 .hopeignore*.whl

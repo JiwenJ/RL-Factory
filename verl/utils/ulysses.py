@@ -272,7 +272,7 @@ def ulysses_pad(
     input_ids_rmpad: torch.Tensor, position_ids_rmpad: Optional[torch.Tensor] = None, sp_size: int = 1
 ):
     if position_ids_rmpad is not None:
-        assert position_ids_rmpad.size(0) == 1
+        assert position_ids_rmpad.size(0) == 1 # 
         assert input_ids_rmpad.size(1) == position_ids_rmpad.size(1)
     if sp_size <= 1:
         return input_ids_rmpad, position_ids_rmpad, 0

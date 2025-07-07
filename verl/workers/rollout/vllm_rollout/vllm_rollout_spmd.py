@@ -264,8 +264,9 @@ class vLLMRollout(BaseRollout):
 
     @GPUMemoryLogger(role="vllm rollout spmd", logger=logger)
     @torch.no_grad()
-    def generate_sequences(self, prompts: DataProto, tokenizer=None, **kwargs) -> DataProto:
+    def generate_sequences(self, prompts: DataProto, tokenizer=None, step=0, **kwargs) -> DataProto:
         # breakpoint()
+        print(f'vllm rollout: You are in step:{step}')
         
         # rebuild vllm cache engine
         if (
@@ -340,7 +341,12 @@ class vLLMRollout(BaseRollout):
         # users can customize different sampling_params at different run
         # breakpoint()
         with self.update_sampling_params(**kwargs):
-            outputs = self.inference_engine.generate(prompts=vllm_inputs,sampling_params=self.sampling_params,lora_request=lora_requests,use_tqdm=False)
+            # breakpoint()
+            try:
+                outputs = self.inference_engine.generate(prompts=vllm_inputs,sampling_params=self.sampling_params,lora_request=lora_requests,use_tqdm=False)
+            except:
+                breakpoint()
+
             # breakpoint()
             # TODO(sgm): disable logprob when recompute_log_prob is enable
             # if n = 1: (bs, response_length) ; if n > 1: (bs * n, response_length)

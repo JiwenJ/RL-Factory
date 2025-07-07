@@ -10,6 +10,16 @@ from verl.utils.torch_functional import tokenize_and_postprocess_data
 from typing import List
 from PIL import Image
 
+
+def debug_print(msg):
+    """Ray环境下可靠的调试输出"""
+    import sys
+    from ray.util.debug import log_once
+    if log_once(hash(msg)):
+        sys.__stderr__.write(f"[DEBUG] {msg}\n")
+        sys.__stderr__.flush()
+
+
 class Env(ABC):
     def __init__(self, config, centralized_actor=None):
         tool_manager_name = config.get('tool_manager', 'qwen3')
@@ -65,7 +75,9 @@ class Env(ABC):
         valid_response_ids = response_ids[:valid_response_length]
 
         # decode
-        prompt_str = tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
+        # prompt_str = tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
+        prompt_str = tokenizer.decode(valid_prompt_ids)
+        # response_str = tokenizer.decode(valid_response_ids)
         response_str = tokenizer.decode(valid_response_ids, skip_special_tokens=True)
         ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
         data_source = data_item.non_tensor_batch['data_source']
@@ -80,25 +92,28 @@ class Env(ABC):
         }
     
     def get_step_reward(self, responses, format_score=0.1):
-        
         step_reward = [1] * len(responses)
-    
         return step_reward
 
     def step(self, responses, tokenizer, image_data: List[List[Image.Image]], processor):
         # breakpoint()
         # responses = ["To solve this problem,  <tool_call>{\"name\":\"image_edit\", \"arguments\": {\"instruction\": \"top\"}}</tool_call> .<|im_end|>" for _ in range(len(responses))]
         # responses[-1]= "I have solve the problem. <answer> 15 </answer>"
+        import sys
+        print("start to the env step", file=sys.stderr, flush=True)
+        # print("start to the env step and process action", flush=True)
         cur_actions, tool_results = self.tool_manager.execute_actions(responses=responses, image_data=image_data)
         next_obs, dones, valid_action, is_tool, new_image = [], [], [], [], []
         raw_prompt = []
         multi_modal_data = []
+        valid_tool = []
         
         for action, tool_result in zip(cur_actions, tool_results):
             raw_next_obs = None
+            temp_valid_tool = 0
             temp_multi_modal_data = None
             if action == 'answer':
-                temp_next_obs, temp_done, temp_valid_action, temp_is_tool, temp_image_data = '', True, 1, 0, None
+                temp_next_obs, temp_done, temp_valid_action, temp_is_tool, temp_image_data, temp_valid_tool = '', True, 0, 1, None, 0
             elif action == 'error':
                 temp_next_obs = self.tool_manager.get_prompt(
                     input_data=tool_result, 
@@ -111,6 +126,7 @@ class Env(ABC):
                 if self._contains_image_simple(tool_result):
                     mode = 'multimodal_tool_call'
                     temp_image_data = self._extract_image_data(tool_result)
+                    assert isinstance(temp_image_data,Image.Image)
                     raw_next_obs = self.tool_manager.get_prompt(
                         input_data=tool_result, 
                         tokenizer=tokenizer,
@@ -126,11 +142,11 @@ class Env(ABC):
                         truncation=False,
                         padding=False,
                     )                
-                    try:
-                        temp_multi_modal_data = {"pixel_values": temp_next_obs["pixel_values"],"image_grid_thw": temp_next_obs["image_grid_thw"]}
-                    except:
-                        breakpoint()
+                    
+                    temp_multi_modal_data = {"pixel_values": temp_next_obs["pixel_values"],"image_grid_thw": temp_next_obs["image_grid_thw"]}
                     temp_next_obs = tokenizer.decode(temp_next_obs["input_ids"][0])
+                    temp_done, temp_valid_action, temp_is_tool = False, 1, 1
+                    temp_valid_tool = 1
                 else:
                     mode = 'tool_call'
                     temp_image_data = None
@@ -141,7 +157,7 @@ class Env(ABC):
                         mode=mode,
                         add_generation_prompt=True
                     )
-                temp_done, temp_valid_action, temp_is_tool = False, 1, 1
+                    temp_done, temp_valid_action, temp_is_tool = False, 0, 1
             else:
                 raise ValueError('Unexpected action: {}'.format(action))
             
@@ -152,16 +168,17 @@ class Env(ABC):
             new_image.append(temp_image_data)
             raw_prompt.append(raw_next_obs)
             multi_modal_data.append(temp_multi_modal_data)
+            valid_tool.append(temp_valid_tool)
+
 
             
-
-            # multi_modal_data.append(temp_model_input)
-            
-        print("next_obs: ")
+        print(f"image valid tool execute is {sum(valid_tool)} and overall batch size is  {len(dones)}",file=sys.stderr, flush=True)
+        # breakpoint()
+        assert sum(valid_tool) == sum(1 for item in new_image if isinstance(item, Image.Image))
         # breakpoint()
         
         # return next_obs, dones, valid_action, is_tool, new_image, multi_modal_data
-        return next_obs, dones, valid_action, is_tool, new_image, raw_prompt, multi_modal_data
+        return next_obs, dones, valid_action, is_tool, new_image, raw_prompt, multi_modal_data, valid_tool
     
 
     def compute_score(self, reward_rollout_wg, reward_tokenizer, tokenizer, data: DataProto, if_val=False, use_process_reward=False):

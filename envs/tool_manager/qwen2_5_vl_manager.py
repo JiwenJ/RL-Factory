@@ -1,7 +1,7 @@
 import re
 import copy
 import json
-import json5
+import json5, sys
 import asyncio
 import traceback
 import base64
@@ -27,7 +27,7 @@ def parse_mcp_tools_config(file_path):
         data = literal_eval(content)
         return data
     except Exception as e:
-        print(f"解析错误: {e}")
+        print(f"解析错误: {e}",file=sys.stderr, flush=True)
         return None
 
 
@@ -123,6 +123,7 @@ class Qwen25VLManager(ToolManager):
                             self._call_tool, 
                             tool["name"], image_data
                         )
+                        
                         # tool_result = self.base64_to_pil(tool_result)
                         assert isinstance(tool_result, Image.Image), f"tool_result is not a PIL.Image.Image instance, got {type(tool_result)}"
                         # breakpoint()
@@ -161,6 +162,7 @@ class Qwen25VLManager(ToolManager):
             # 'tools' is the list of the 'Tool' instances
             tasks = [execute_single_tool(temp_tool, image_data[-1]) for temp_tool in tools]
             tool_results = await asyncio.gather(*tasks)
+            # breakpoint()
             results = [{'role': 'tool', 'content': temp_tool_result} for temp_tool_result in tool_results]
         else:
             raise ValueError('Unexpected action: {}'.format(action))
@@ -199,7 +201,7 @@ class Qwen25VLManager(ToolManager):
 
         # 如果工具结果是PIL图像，直接返回
         if self.is_base64(tool_result):
-            print("tool_result is base64")
+            print("tool_result is base64", file=sys.stderr,flush=True)
             return self.base64_to_pil(tool_result)
         elif isinstance(tool_result, str):
             return tool_result
@@ -215,10 +217,9 @@ class Qwen25VLManager(ToolManager):
             tools = MCPManager().initConfig(tool)
             for tool in tools:
                 tool_name = tool.name
-                if tool_name == 'image_edit-image_edit':
-                    tool_name = 'image_edit'
-                if tool_name == 'image_flip-image_flip':
-                    tool_name = 'image_flip'
+                # breakpoint()
+                if "-" in tool_name:
+                    tool_name = tool_name[0:len(tool_name)//2]
                 self.tool_map[tool_name] = tool
         else:
             if isinstance(tool, dict):
@@ -288,60 +289,111 @@ class Qwen25VLManager(ToolManager):
             return True, answer
         else:
             return False, None
-    
+        
+    import json
+    import json5
+
     def parse_tools(self, response: str):
         parsed_tools = []
         i = response.find('<tool_call>')
-        # If no function call:
+        
+        # If no function call, return original response
         if i < 0:
             return response
 
-        # split tool-call to separate assistant msg
+        # Split tool-call to separate assistant msg
         tool_call_list = response.split('<tool_call>')
         pre_thought = tool_call_list[0].strip()
+        
+        # Only process the first valid tool call
         for txt in tool_call_list[1:]:
             if not txt.strip():
                 continue
 
             if '</tool_call>' not in txt:
-                # incomplete </tool_call>: This is to better represent incomplete tool calls in streaming output
-                fn_name = '<empty>'
-                fn_args = """# Extract the tool name failed, 305"""
-                parsed_tools.append(
-                    {
-                        "name": fn_name,
-                        "args": fn_args,
-                    }
-                )
+                # Incomplete tool call
+                parsed_tools.append({
+                    "name": "<empty>",
+                    "args": "# Extract the tool name failed, 305"
+                })
+                break  # Stop after the first tool call (even if incomplete)
             else:
                 one_tool_call_txt = txt.split('</tool_call>')
-                # breakpoint()
                 try:
-                    # 检查分割后是否有有效内容
                     if not one_tool_call_txt[0].strip():
                         raise ValueError("Empty tool call content")
-                        
-                    # 尝试解析JSON
+                    
+                    # Try to parse JSON
                     fn = json5.loads(one_tool_call_txt[0].strip())
                     
-                    # 检查必须字段是否存在
-                    # if type(fn) is not dict or 'name' not in fn or 'arguments' not in fn:
-                    #     raise KeyError("Missing required fields")
-                    
-                    # 解析成功的情况
+                    # Only append the first valid tool
                     parsed_tools.append({
                         "name": fn['name'],
                         "args": json.dumps(fn['arguments'], ensure_ascii=False, indent=4),
                     })
+                    break  # Stop after the first valid tool call
                 
                 except (IndexError, KeyError, ValueError) as e:
-                    # 所有可能的错误类型处理
                     parsed_tools.append({
                         "name": "<empty>",
                         "args": "# Extract the tool name failed, 336"
                     })
+                    break  # Stop after the first error
 
         return parsed_tools
+    # def parse_tools(self, response: str):
+    #     parsed_tools = []
+    #     i = response.find('<tool_call>')
+    #     # If no function call:
+    #     if i < 0:
+    #         return response
+
+    #     # split tool-call to separate assistant msg
+    #     tool_call_list = response.split('<tool_call>')
+    #     pre_thought = tool_call_list[0].strip()
+    #     for txt in tool_call_list[1:]:
+    #         if not txt.strip():
+    #             continue
+
+    #         if '</tool_call>' not in txt:
+    #             # incomplete </tool_call>: This is to better represent incomplete tool calls in streaming output
+    #             fn_name = '<empty>'
+    #             fn_args = """# Extract the tool name failed, 305"""
+    #             parsed_tools.append(
+    #                 {
+    #                     "name": fn_name,
+    #                     "args": fn_args,
+    #                 }
+    #             )
+    #         else:
+    #             one_tool_call_txt = txt.split('</tool_call>')
+    #             # breakpoint()
+    #             try:
+    #                 # 检查分割后是否有有效内容
+    #                 if not one_tool_call_txt[0].strip():
+    #                     raise ValueError("Empty tool call content")
+                        
+    #                 # 尝试解析JSON
+    #                 fn = json5.loads(one_tool_call_txt[0].strip())
+                    
+    #                 # 检查必须字段是否存在
+    #                 # if type(fn) is not dict or 'name' not in fn or 'arguments' not in fn:
+    #                 #     raise KeyError("Missing required fields")
+                    
+    #                 # 解析成功的情况
+    #                 parsed_tools.append({
+    #                     "name": fn['name'],
+    #                     "args": json.dumps(fn['arguments'], ensure_ascii=False, indent=4),
+    #                 })
+                
+    #             except (IndexError, KeyError, ValueError) as e:
+    #                 # 所有可能的错误类型处理
+    #                 parsed_tools.append({
+    #                     "name": "<empty>",
+    #                     "args": "# Extract the tool name failed, 336"
+    #                 })
+
+    #     return parsed_tools
     
     def get_prompt(self, input_data, tokenizer, processor, mode='initial', add_generation_prompt=True):
         # if isinstance(input_data, List) and "image_url" in input_data[0]["content"][1]["type"]:

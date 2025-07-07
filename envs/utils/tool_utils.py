@@ -6,6 +6,7 @@ import torch.distributed as dist
 from tensordict import TensorDict
 from typing import List
 from PIL import Image
+import sys
 
 
 class ToolUtils:
@@ -324,6 +325,7 @@ class ToolUtils:
         return next_data
     
     def postprocess_output(self, output: DataProto, step: int=2):
+        print(f"[ToolUtils] start the {step}th postprocess",file=sys.stderr,flush=True)
         '''output: cpu'''
         if self.loop_cnt == 0:
             self.batch_size = output.batch.batch_size[0]
@@ -347,10 +349,12 @@ class ToolUtils:
             
             for idx in range(self.batch_size):
                 self.multi_modal_inputs[idx].append(output.non_tensor_batch["multi_modal_inputs"][idx])
+                # breakpoint()
                 prompt_token = self.init_prompt_token[idx]
-                prompt_token = torch.tensor(prompt_token)
+                # prompt_token = torch.tensor(prompt_token)
                 assert isinstance(prompt_token, torch.Tensor)
-                prompt_token_list = torch.tensor(prompt_token[torch.tensor(prompt_token) != self.pad_token_id]).tolist()
+                prompt_token_list = prompt_token[prompt_token != self.pad_token_id].tolist()
+                # prompt_token_list = torch.tensor(prompt_token[torch.tensor(prompt_token) != self.pad_token_id]).tolist()
                 self.loop_responses_token[idx].append(prompt_token_list)
                 self.loop_raw_responses_token[idx].append(self.raw_prompt_id[idx])
 
@@ -371,7 +375,7 @@ class ToolUtils:
             skip_special_tokens=False,
         )
         # breakpoint()
-        infos_str, dones, _, _, new_image_data, raw_prompt, multi_modal_data = self.env_object.step(
+        infos_str, dones, _, _, new_image_data, raw_prompt, multi_modal_data, valid_tool = self.env_object.step(
             responses=responses_str, tokenizer=self.tokenizer, image_data=self.image_list, processor=self.processor
         )
         # breakpoint()
@@ -393,7 +397,7 @@ class ToolUtils:
             try:
                 info_tokens = self.tokenizer(text=infos_str).input_ids
             except:
-                breakpoint()
+                raise ValueError("399 399 399 error")
             return info_tokens
 
         next_prompt_token = []
@@ -406,6 +410,8 @@ class ToolUtils:
         # breakpoint()
         for idx, batch_idx in enumerate(batch_idxs):
             if not dones[idx]:
+                # if idx != batch_idx:
+                #     breakpoint()
                 info_token_list = tokenize_infos(infos_str[idx])
                 raw_prompt_list = tokenize_infos(raw_prompt[idx])
                 self.loop_responses_token[batch_idx].append(info_token_list)
@@ -417,12 +423,11 @@ class ToolUtils:
                 next_raw_prompt_token.append(raw_prompt_token)
                 next_prompt_length.append(len(promt_token))
                 next_raw_prompt_length.append(len(raw_prompt_token))
-                # get process reward 
                 self.tool_use[batch_idx].append(step_scores[idx])
-                # append the new image from tool call
-                if new_image_data[idx] is not None:
-                    self.image_list[idx].append(new_image_data[idx])
-                next_image_data.append(self.image_list[idx])
+                if valid_tool[idx]:
+                    self.image_list[batch_idx].append(new_image_data[idx])
+                next_image_data.append(self.image_list[batch_idx])
+        
         # breakpoint()
         if len(next_prompt_token) == 0:
             return 
@@ -458,19 +463,34 @@ class ToolUtils:
         next_data.meta_info['index'] = next_sample_idx
         next_data.meta_info['do_sample'] = False # step > 0 does not do sample
         self.loop_cnt += 1
+        temp = 0
+        try:
+            for i, (sample_idx, images) in enumerate(zip(next_sample_idx, next_image_data)):
+                # Check full prompt tokens, not just the truncated raw_prompt_ids
+                full_prompt_tokens = raw_prompt_ids[i]
+                num_image_tokens = full_prompt_tokens.count(self.image_token_id)
+                num_images = len(images["image"])
+                if num_image_tokens != num_images:
+                    temp = i
+                    print(
+                        f"Final consistency check failed for sample {sample_idx}. "
+                        f"Found {num_image_tokens} image tokens in full prompt but {num_images} images in next_image_data."
+                    ,flush=True,file=sys.stderr)
+                    raise ValueError("error")
 
+        except:
+            breakpoint()
         return next_data
 
     def compose_final_output(self, step) -> DataProto:
+        print(f"start compose the final output, step is {step}", flush=True)
         # breakpoint()
         """Compose final generation output."""
         input_ids_list = []
         loss_mask_list = []
         length_list = []
-        raw_prompt_ids_list = []
         
         for idx, responses in enumerate(self.loop_responses_token):
-            # loss_mask = [0]*len(responses[0]) # init_prompt loss
             loss_mask = []
             prompts_list = list(itertools.chain.from_iterable(responses[1:]))
             # responses_token: [prompt_token, reponse_token_1, info_token_1, response_token_2....]
@@ -481,8 +501,8 @@ class ToolUtils:
             loss_mask_list.append(loss_mask)
             length_list.append(len(prompts_list))
         # breakpoint()
-        # max_len = max(max(length_list), self.config_response_length)
-        max_response_length = torch.tensor([max(length_list)], device=torch.cuda.current_device())
+        # max_response_length = torch.tensor([max(length_list)], device=torch.cuda.current_device())
+        max_response_length = torch.tensor([max(length_list)])
         dist.all_reduce(max_response_length, op=dist.ReduceOp.MAX)
         max_len = int(max_response_length)
         
@@ -498,7 +518,7 @@ class ToolUtils:
         response_token = torch.tensor(input_ids_list, dtype=torch.int64)[:,:max_len]
         response_loss_mask = torch.tensor(loss_mask_list, dtype=torch.float32)
         response_attention_mask = (response_token != self.pad_token_id).long()
-
+        # breakpoint()
         # get the max length of the process rewards
         max_tool_use_len = self.max_turns
         for tool_use_item in self.tool_use:
@@ -516,10 +536,9 @@ class ToolUtils:
         tool_use_score = torch.tensor(tool_use_tensor)
         # breakpoint()
         multi_modal_inputs = np.array(self.merge_multi_modal_inputs(self.multi_modal_inputs))
-        # breakpoint()
         input_ids = torch.cat([self.init_prompt_token, response_token], dim=-1)
         attention_mask = torch.cat([self.init_attention_mask, response_attention_mask], dim=-1)
-        
+        # breakpoint()
         if self.processor is not None and self.processor.image_processor._processor_class== "Qwen2_5_VLProcessor":
             from verl.models.transformers.qwen2_vl import get_rope_index
             position_ids = [] 
@@ -560,8 +579,25 @@ class ToolUtils:
         for i in range(len(multi_modal_inputs)):
             temp.append(multi_modal_inputs[i][0])
         # breakpoint()
-        final_output = DataProto(batch=final_batch,non_tensor_batch={'multi_modal_data': image_list, "multi_modal_inputs":np.array(temp)})
-        print("dsds")
+        modal_inputs = np.array(temp)
+        final_output = DataProto(batch=final_batch,non_tensor_batch={'multi_modal_data': image_list, "multi_modal_inputs":modal_inputs})
+        # try:
+        #     for i, (sample_idx, images) in enumerate(zip(next_sample_idx, modal_inputs)):
+        #         # Check full prompt tokens, not just the truncated raw_prompt_ids
+        #         full_prompt_tokens = raw_prompt_ids[i]
+        #         num_image_tokens = full_prompt_tokens.count(self.image_token_id)
+        #         num_images = len(images["image"])
+        #         if num_image_tokens != num_images:
+        #             temp = i
+        #             print(
+        #                 f"Final consistency check failed for sample {sample_idx}. "
+        #                 f"Found {num_image_tokens} image tokens in full prompt but {num_images} images in next_image_data."
+        #             ,flush=True)
+        #             raise ValueError("error")
+
+        # except:
+        #     breakpoint()
+        print("finish final compose", flush=True)
         return final_output
 
 

@@ -3,6 +3,7 @@ import json
 import string
 import random
 import torch
+import sys
 from .base import Env
 from verl import DataProto
 
@@ -63,15 +64,6 @@ class SearchEnvVL(Env):
             return score
 
         def extract_solution(solution_str):
-            """Extract the equation from the solution string."""
-            # Remove everything before the first "Assistant:"
-            # if "Assistant:" in solution_str:
-            #     solution_str = solution_str.split("Assistant:", 1)[1]
-            # elif "<|im_start|>assistant" in solution_str:
-            #     solution_str = solution_str.split("<|im_start|>assistant", 1)[1]
-            # else:
-            #     return None
-            # solution_str = solution_str.split('\n')[-1]
             think_pattern = r'<think>.*?</think>'
             solution_str = re.sub(think_pattern, '', solution_str, flags=re.DOTALL)
 
@@ -97,14 +89,19 @@ class SearchEnvVL(Env):
                 format_score: the score for the format
                 score: the score for the correct answer
             """
+            # breakpoint()
+            original_response = str(solution_str)
             answer = extract_solution(solution_str=solution_str)
             do_print = random.randint(1, 64) == 1
+            do_print = True
             # breakpoint()
+            
             if do_print:
                 print(f"--------------------------------")
-                print(f"Golden answers: {ground_truth}")
-                print(f"Extracted answer: {answer}")
-                print(f"Solution string: {solution_str}")
+                print(f"Response: {original_response}", file=sys.stderr,flush=True)
+                print(f"Golden answers: {ground_truth}",file=sys.stderr,flush=True)
+                print(f"Extracted answer: {answer}",file=sys.stderr,flush=True)
+                print(f"Solution string: {solution_str}",file=sys.stderr,flush=True)
             
             answer_format_score = format_score if check_alternate_tags(solution_str, r"</?answer>") else (-1 * format_score)
             num_score=0
@@ -137,10 +134,10 @@ class SearchEnvVL(Env):
             if answer is None:
                 return -1 * format_score + 0.5 * total_format_score
             else:
-                if em_check(answer, ground_truth):
-                    return score + 0.5 * total_format_score
-                else:
-                    return total_format_score
+                for truth in ground_truth:
+                    if em_check(answer, truth):
+                        return score + 0.5 * total_format_score
+                return total_format_score
         
         def check_alternate_tags(text, tag_pattern):
             # 匹配所有<tool_call>和</tool_call>标签
@@ -161,7 +158,7 @@ class SearchEnvVL(Env):
             
             # 最终栈必须为空，才是严格交替
             return len(stack) == 0
-
+        # breakpoint()
         format_score = 0.0 if if_val else 0.1
         scores = []
         for i in range(len(data)):
@@ -175,6 +172,7 @@ class SearchEnvVL(Env):
             prompt_str, data_source, extra_info = processed_data['prompt_str'], processed_data['data_source'], processed_data['extra_info']
 
             score = compute_score_em(response_str, ground_truth, format_score=format_score)
+            print(f"Score: {score}",file=sys.stderr, flush=True)
             scores.append([score])
 
         return scores

@@ -31,6 +31,7 @@ from typing import Optional, Type
 import numpy as np
 import ray
 import torch
+import sys
 from omegaconf import OmegaConf, open_dict
 from torch.utils.data import Dataset, Sampler
 from torchdata.stateful_dataloader import StatefulDataLoader
@@ -626,7 +627,7 @@ class RayPPOTrainer:
                 "validate": True,
             }
             
-            print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
+            print(f"test_gen_batch meta info: {test_gen_batch.meta_info}",file=sys.stderr, flush=True)
 
             # pad to be divisible by dp_size
             test_gen_batch_padded, pad_size = pad_dataproto_to_divisor(test_gen_batch, self.actor_rollout_wg.world_size)
@@ -639,7 +640,7 @@ class RayPPOTrainer:
 
             # unpad
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-            print("validation generation end")
+            print("validation generation end",file=sys.stderr, flush=True)
 
             # Store generated outputs
             output_ids = test_output_gen_batch.batch["responses"]
@@ -860,7 +861,7 @@ class RayPPOTrainer:
         # find global_step_folder
         if self.config.trainer.resume_mode == "auto":
             if global_step_folder is None:
-                print("Training from scratch")
+                print("Training from scratch",file=sys.stderr, flush=True)
                 return 0
         else:
             if self.config.trainer.resume_mode == "resume_path":
@@ -949,6 +950,7 @@ class RayPPOTrainer:
         last_val_metrics = None
 
         for epoch in range(self.config.trainer.total_epochs):
+            print(f"[PPO Trainer] start the epoch {epoch}",file=sys.stderr, flush=True)
             # breakpoint()
             for batch_dict in self.train_dataloader:
                 # breakpoint()
@@ -990,7 +992,8 @@ class RayPPOTrainer:
                             gen_batch_output.meta_info.pop("timing", None)
                         else:
                             gen_batch_output = self.actor_rollout_wg.generate_sequences_loop(gen_batch)
-
+                    print("finish the rollout",file=sys.stderr, flush=True)
+                    # breakpoint()
                     if self.config.algorithm.adv_estimator == AdvantageEstimator.REMAX:
                         with _timer("gen_max", timing_raw):
                             gen_baseline_batch = deepcopy(gen_batch)
@@ -1006,7 +1009,7 @@ class RayPPOTrainer:
                             batch.batch["reward_baselines"] = reward_baseline_tensor
 
                             del gen_baseline_batch, gen_baseline_output
-
+                    # breakpoint()
                     batch.non_tensor_batch["uid"] = np.array([str(uuid.uuid4()) for _ in range(len(batch.batch))], dtype=object)
                     # repeat to align with repeated responses in rollout
                     batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
@@ -1131,6 +1134,7 @@ class RayPPOTrainer:
                         # update actor
                         with _timer("update_actor", timing_raw):
                             batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
+                            print("start to update the actor",file=sys.stderr, flush=True)
                             actor_output = self.actor_rollout_wg.update_actor(batch)
                         actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                         metrics.update(actor_output_metrics)
