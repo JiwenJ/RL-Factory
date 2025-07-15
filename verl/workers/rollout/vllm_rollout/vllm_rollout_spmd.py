@@ -27,11 +27,12 @@ When working with Megatron:
 """
 
 import logging
+import sys
 import os
 from contextlib import contextmanager
 from copy import deepcopy
 from typing import Any, Dict, List, Union
-
+from time import sleep
 import numpy as np
 import torch
 import torch.distributed
@@ -266,6 +267,7 @@ class vLLMRollout(BaseRollout):
     @torch.no_grad()
     def generate_sequences(self, prompts: DataProto, tokenizer=None, step=0, **kwargs) -> DataProto:
         # breakpoint()
+        assert tokenizer is not None
         print(f'vllm rollout: You are in step:{step}')
         
         # rebuild vllm cache engine
@@ -302,11 +304,16 @@ class vLLMRollout(BaseRollout):
             for raw_prompt_ids, multi_modal_data in zip(non_tensor_batch.get("raw_prompt_ids"), non_tensor_batch.get("multi_modal_data")):
                 vllm_inputs.append({"prompt_token_ids": raw_prompt_ids, "multi_modal_data": multi_modal_data})
         else:
-            vllm_inputs = [{"prompt_token_ids": raw_prompt_ids} for raw_prompt_ids in non_tensor_batch.pop("raw_prompt_ids")]
+            vllm_inputs = [{"prompt_token_ids": raw_prompt_ids} for raw_prompt_ids in non_tensor_batch.get("raw_prompt_ids")]
         # breakpoint()
         # ensure the type of `prompt_token_ids` passed to vllm is list[int]
         # https://github.com/volcengine/verl/pull/772
         for input_data in vllm_inputs:
+            # import sys
+            # from time import sleep
+            # prompt = tokenizer.decode(input_data["prompt_token_ids"])
+            # print(f"[VLLM DEBUG] prompt: {prompt}", file=sys.stderr,flush=True)
+            # sleep(0.01)
             if isinstance(input_data["prompt_token_ids"], np.ndarray):
                 input_data["prompt_token_ids"] = input_data["prompt_token_ids"].tolist()
             elif not isinstance(input_data["prompt_token_ids"], list):
@@ -341,11 +348,12 @@ class vLLMRollout(BaseRollout):
         # users can customize different sampling_params at different run
         # breakpoint()
         with self.update_sampling_params(**kwargs):
+
             # breakpoint()
-            try:
-                outputs = self.inference_engine.generate(prompts=vllm_inputs,sampling_params=self.sampling_params,lora_request=lora_requests,use_tqdm=False)
-            except:
-                breakpoint()
+            # try:
+            outputs = self.inference_engine.generate(prompts=vllm_inputs,sampling_params=self.sampling_params,lora_request=lora_requests,use_tqdm=False)
+            # except:
+            #     breakpoint()
 
             # breakpoint()
             # TODO(sgm): disable logprob when recompute_log_prob is enable
@@ -361,7 +369,14 @@ class vLLMRollout(BaseRollout):
                     for i, logprob in enumerate(output.outputs[sample_id].logprobs):
                         curr_log_prob.append(logprob[response_ids[i]].logprob)
                     rollout_log_probs.append(curr_log_prob)
-
+            # breakpoint()
+            for raw, res in zip(non_tensor_batch.get("raw_prompt_ids"), response):
+                prompt = tokenizer.decode(raw)
+                res_tmp = tokenizer.decode(res)
+                print(f"======= [VLLM DEBUG] [STEP [{step}]][Prompt]: {prompt}",file=sys.stderr,flush=True)
+                print(f"======= [VLLM DEBUG] [STEP [{step}]][Response]: {res_tmp}",file=sys.stderr,flush=True)
+                sleep(0.1)
+            # breakpoint()
             response = pad_2d_list_to_length(response, self.pad_token_id, max_length=self.config.response_length).to(idx.device)
             rollout_log_probs = pad_2d_list_to_length(rollout_log_probs, -1, max_length=self.config.response_length).to(idx.device)
             rollout_log_probs = rollout_log_probs.to(torch.float32)
@@ -398,7 +413,7 @@ class vLLMRollout(BaseRollout):
         position_ids = torch.cat([position_ids, response_position_ids], dim=-1)
         response_attention_mask = get_response_mask(response_id=response, eos_token=eos_token_id, dtype=attention_mask.dtype)
         attention_mask = torch.cat((attention_mask, response_attention_mask), dim=-1)
-
+        
         # all the tp ranks should contain the same data here. data in all ranks are valid
         batch = TensorDict(
             {
@@ -411,6 +426,14 @@ class vLLMRollout(BaseRollout):
             },
             batch_size=batch_size,
         )
+        # for value in batch:
+        #     import sys
+        #     from time import sleep
+        #     prompt = tokenizer.decode(value["prompts"])
+        #     res = tokenizer.decode(value["responses"])
+        #     print(f"[STEP:{step} VLLM DEBUG] prompt: {prompt}", file=sys.stderr,flush=True)
+        #     print(f"[STEP:{step} VLLM DEBUG] response: {res}", file=sys.stderr,flush=True)
+        #     sleep(0.01)
 
         # free vllm cache engine
         if (

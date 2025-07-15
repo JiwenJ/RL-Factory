@@ -93,15 +93,18 @@ class SearchEnvVL(Env):
             original_response = str(solution_str)
             answer = extract_solution(solution_str=solution_str)
             do_print = random.randint(1, 64) == 1
-            do_print = True
+            do_print = False
             # breakpoint()
             
             if do_print:
-                print(f"--------------------------------")
+                from time import sleep
+                
                 print(f"Response: {original_response}", file=sys.stderr,flush=True)
                 print(f"Golden answers: {ground_truth}",file=sys.stderr,flush=True)
                 print(f"Extracted answer: {answer}",file=sys.stderr,flush=True)
                 print(f"Solution string: {solution_str}",file=sys.stderr,flush=True)
+                sleep(0.1)
+                print(f"--------------------------------")
             
             answer_format_score = format_score if check_alternate_tags(solution_str, r"</?answer>") else (-1 * format_score)
             num_score=0
@@ -170,9 +173,10 @@ class SearchEnvVL(Env):
             
             # reserved for compatibility
             prompt_str, data_source, extra_info = processed_data['prompt_str'], processed_data['data_source'], processed_data['extra_info']
-
+            # print(f"--------------------------------")
+            # print(f"prompt_str: {prompt_str}", file=sys.stderr,flush=True)
             score = compute_score_em(response_str, ground_truth, format_score=format_score)
-            print(f"Score: {score}",file=sys.stderr, flush=True)
+            # print(f"Score: {score}",file=sys.stderr, flush=True)
             scores.append([score])
 
         return scores

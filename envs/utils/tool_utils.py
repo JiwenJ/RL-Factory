@@ -433,7 +433,8 @@ class ToolUtils:
             return 
         
         # left pad
-        max_len = max(max(next_prompt_length), self.config_prompt_length)
+        max_len = (max(next_prompt_length) + self.config_prompt_length)
+        
         next_prompt_token_pad = []
         for prompt_token in next_prompt_token:
             token = [self.pad_token_id] * (max_len - len(prompt_token)) + prompt_token
@@ -442,7 +443,7 @@ class ToolUtils:
         next_input_ids = torch.tensor(next_prompt_token_pad, dtype=torch.int64)
         next_attention_mask = next_input_ids != self.pad_token_id
         position_ids = torch.clip(torch.cumsum(next_attention_mask, dim=-1) - 1, min=0, max=None) * next_attention_mask
-        max_len = self.config_prompt_length
+        # max_len = self.config_prompt_length
         next_batch = TensorDict(
             {
                 'input_ids': next_input_ids[:, -max_len:].cpu().share_memory_(),
@@ -483,7 +484,7 @@ class ToolUtils:
         return next_data
 
     def compose_final_output(self, step) -> DataProto:
-        print(f"start compose the final output, step is {step}", flush=True)
+        print(f"[compose_final_output] start compose the final output, step is {step}", flush=True, file=sys.stderr)
         # breakpoint()
         """Compose final generation output."""
         input_ids_list = []
@@ -582,22 +583,22 @@ class ToolUtils:
         modal_inputs = np.array(temp)
         final_output = DataProto(batch=final_batch,non_tensor_batch={'multi_modal_data': image_list, "multi_modal_inputs":modal_inputs})
         # try:
-        #     for i, (sample_idx, images) in enumerate(zip(next_sample_idx, modal_inputs)):
-        #         # Check full prompt tokens, not just the truncated raw_prompt_ids
-        #         full_prompt_tokens = raw_prompt_ids[i]
-        #         num_image_tokens = full_prompt_tokens.count(self.image_token_id)
-        #         num_images = len(images["image"])
-        #         if num_image_tokens != num_images:
-        #             temp = i
-        #             print(
-        #                 f"Final consistency check failed for sample {sample_idx}. "
-        #                 f"Found {num_image_tokens} image tokens in full prompt but {num_images} images in next_image_data."
-        #             ,flush=True)
-        #             raise ValueError("error")
+        # for i, (sample_idx, images) in enumerate(zip(next_sample_idx, modal_inputs)):
+        #     # Check full prompt tokens, not just the truncated raw_prompt_ids
+        #     full_prompt_tokens = raw_prompt_ids[i]
+        #     num_image_tokens = full_prompt_tokens.count(self.image_token_id)
+        #     num_images = len(images["image"])
+        #     if num_image_tokens != num_images:
+        #         temp = i
+        #         print(
+        #             f"Final consistency check failed for sample {sample_idx}. "
+        #             f"Found {num_image_tokens} image tokens in full prompt but {num_images} images in next_image_data."
+        #         ,flush=True, file=sys.stderr)
+        #         raise ValueError("error")
 
         # except:
         #     breakpoint()
-        print("finish final compose", flush=True)
+        print("[Final Compose] finish final compose", flush=True, file=sys.stderr)
         return final_output
 
 

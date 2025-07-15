@@ -75,10 +75,11 @@ class Env(ABC):
         valid_response_ids = response_ids[:valid_response_length]
 
         # decode
-        # prompt_str = tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
-        prompt_str = tokenizer.decode(valid_prompt_ids)
-        # response_str = tokenizer.decode(valid_response_ids)
-        response_str = tokenizer.decode(valid_response_ids, skip_special_tokens=True)
+        prompt_str = tokenizer.decode(valid_prompt_ids, skip_special_tokens=True)
+        # prompt_str = tokenizer.decode(valid_prompt_ids)
+        response_str = tokenizer.decode(valid_response_ids)
+        response_str = response_str.replace("<|image_pad|>", "") 
+        # response_str = tokenizer.decode(valid_response_ids, skip_special_tokens=True)
         ground_truth = data_item.non_tensor_batch['reward_model']['ground_truth']
         data_source = data_item.non_tensor_batch['data_source']
         extra_info = data_item.non_tensor_batch.get('extra_info', None)

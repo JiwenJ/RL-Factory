@@ -695,7 +695,7 @@ class ActorRolloutRefWorker(Worker):
 
             prompts = self.rollout_sharding_manager.preprocess_data(prompts)
             with _timer("generate_sequences", timing_generate):
-                output = self.rollout.generate_sequences(prompts=prompts)
+                output = self.rollout.generate_sequences(prompts=prompts,tokenizer=self.tokenizer)
 
             log_gpu_memory_usage("After rollout generation", logger=logger)
 
@@ -779,6 +779,7 @@ class ActorRolloutRefWorker(Worker):
                         is_worker_done = True
                 
                 # Synchronize done status across all workers
+
                 done_tensor = torch.tensor([1 if is_worker_done else 0], device=torch.cuda.current_device())
                 dist.all_reduce(done_tensor, op=dist.ReduceOp.SUM)
 
@@ -791,6 +792,7 @@ class ActorRolloutRefWorker(Worker):
 
         # clear kv cache
         log_gpu_memory_usage('After generate_sequences', logger=logger)
+        # breakpoint()
         return output
 
     @register(dispatch_mode=Dispatch.DP_COMPUTE_PROTO)
@@ -1689,7 +1691,7 @@ class RewardRolloutWorker(Worker):
 
             prompts = self.rollout_sharding_manager.preprocess_data(prompts)
             with _timer("generate_sequences", timing_generate):
-                output = self.rollout.generate_sequences(prompts=prompts)
+                output = self.rollout.generate_sequences(prompts=prompts, tokenizer=self.tokenizer)
 
             log_gpu_memory_usage("After rollout generation", logger=logger)
 

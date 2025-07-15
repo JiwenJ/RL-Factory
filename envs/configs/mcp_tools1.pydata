@@ -1,8 +1,9 @@
+
 [
     {'mcpServers': {
         'rotate': {
             'command': 'python3',
-            'args': ['envs/tools/image_edit_mcp_server.py']
+            'args': ['/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/RL-Factory/envs/tools/image_edit_mcp_server.py']
         }
     }}
 ]

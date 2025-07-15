@@ -136,13 +136,17 @@ class MCPManager:
         return True
 
     def initConfig(self, config: Dict):
+        #import pdb; pdb.set_trace()
         if not self.is_valid_mcp_servers(config):
             raise ValueError('Config of mcpservers is not valid')
         logger.info(f'Initializing MCP tools from mcp servers: {list(config["mcpServers"].keys())}')
+        # breakpoint()
         # Submit coroutine to the event loop and wait for the result
         future = asyncio.run_coroutine_threadsafe(self.init_config_async(config), self.loop)
+        
         try:
             result = future.result()  # You can specify a timeout if desired
+            # breakpoint()
             return result
         except Exception as e:
             logger.info(f'Failed in initializing MCP tools: {e}')
@@ -156,7 +160,7 @@ class MCPManager:
             server = mcp_servers[server_name]
             await client.connection_server(mcp_server_name=server_name,
                                            mcp_server=server)  # Attempt to connect to the server
-
+            # breakpoint()
             client_id = server_name + '_' + str(
                 uuid.uuid4())  # To allow the same server name be used across different running agents
             client.client_id = client_id  # Ensure client_id is set on the client instance
@@ -200,6 +204,7 @@ class MCPManager:
                                                     tool_name=tool.name,
                                                     tool_desc=tool.description,
                                                     tool_parameters=cleaned_parameters)
+                # breakpoint()
                 tools.append(agent_tool)
 
             if client.resources:

@@ -9,10 +9,11 @@ from PIL import Image
 from ast import literal_eval
 from omegaconf import OmegaConf
 from envs.tool_manager.base_manager import ToolManager
-# from envs.utils.mcp_manager import MCPManager, BaseTool
+from envs.utils.mcp_manager import MCPManager
 from typing import Union, List, Tuple, Optional, Any, Dict
 from envs.utils.util import ToolServiceError, DocParserError
-from qwen_agent.tools import TOOL_REGISTRY, MCPManager, BaseTool
+# from qwen_agent.tools import TOOL_REGISTRY, MCPManager, BaseTool
+from qwen_agent.tools import TOOL_REGISTRY, BaseTool
 from qwen_agent.llm.schema import ASSISTANT, SYSTEM, USER, FUNCTION, ContentItem
 import json
 import io
@@ -201,7 +202,7 @@ class Qwen25VLManager(ToolManager):
 
         # 如果工具结果是PIL图像，直接返回
         if self.is_base64(tool_result):
-            print("tool_result is base64", file=sys.stderr,flush=True)
+            # print("tool_result is base64", file=sys.stderr,flush=True)
             return self.base64_to_pil(tool_result)
         elif isinstance(tool_result, str):
             return tool_result
@@ -314,7 +315,7 @@ class Qwen25VLManager(ToolManager):
                 # Incomplete tool call
                 parsed_tools.append({
                     "name": "<empty>",
-                    "args": "# Extract the tool name failed, 305"
+                    "args": "Extract the tool name failed"
                 })
                 break  # Stop after the first tool call (even if incomplete)
             else:
@@ -325,7 +326,7 @@ class Qwen25VLManager(ToolManager):
                     
                     # Try to parse JSON
                     fn = json5.loads(one_tool_call_txt[0].strip())
-                    
+                    # breakpoint()
                     # Only append the first valid tool
                     parsed_tools.append({
                         "name": fn['name'],
@@ -336,7 +337,7 @@ class Qwen25VLManager(ToolManager):
                 except (IndexError, KeyError, ValueError) as e:
                     parsed_tools.append({
                         "name": "<empty>",
-                        "args": "# Extract the tool name failed, 336"
+                        "args": "Extract the tool name failed"
                     })
                     break  # Stop after the first error
 

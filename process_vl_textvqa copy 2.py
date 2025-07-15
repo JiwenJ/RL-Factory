@@ -57,9 +57,11 @@ logger = logging.getLogger(__name__)
 instruction_following = (
     r"Given a question and an image, answer the question based strictly on visual content. "
     r"Any time you receive new information, you should reason step by step inside the <think> and </think> XML tag. "
-    r"Afterwards, you can either choose to call tool functions or directly provide the answer. "
-    r"If the input is an inverted/rotated image, automatically detect its orientation and use the tool to correct it to a standard upright position. "
-    "Only after correction can you provide the final answer wrapped with <answer></answer> XML tag. All response must be in English and final answer should be brief and concise wrapped with <answer></answer> XML tag. \n"
+    r"Afterwards, you can either choose to call functions or directly provide the answer. "
+    r"PLEASE put the funcion call between <tool_call> and </tool_call> XML tags and wrapped answser with <answer> and </answer> XML tag."
+    r"If you call the tool, you should NOT provide the answer. Vice versa if you diretly provide the answer. "
+    r"If the input is an inverted/rotated image (e.g., upside-down or sideways), automatically detect its orientation and use the `rotate` tool to correct it to a standard upright position (0°)"
+    "Only after correction can you provide the final answer wrapped with <answer></answer> XML tag. All response MUST in English and final answer should be brief and concise. \n"
 )
 # Copyright 2024 Bytedance Ltd. and/or its affiliates
 #
@@ -87,7 +89,7 @@ from verl.utils.hdfs_io import copy, makedirs
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_dir", default="/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/textvqav19")
+    parser.add_argument("--local_dir", default="/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/textvqav18")
     parser.add_argument("--hdfs_dir", default=None)
 
     args = parser.parse_args()
@@ -114,7 +116,7 @@ if __name__ == "__main__":
         def process_fn(example, idx):
             problem = example.pop("question")
             # prompt = problem + " " + instruction_following
-            prompt = instruction_following + "Question:\n" + "<image>" + problem
+            prompt = instruction_following + "Question:" + "<image>" + problem + " \n"
             answer = example.pop("answers")
             images = example.pop("image")
             images = images.resize((1024,1024))

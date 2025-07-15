@@ -55,11 +55,29 @@ logger = logging.getLogger(__name__)
 #     r"Key rules: Never call multiple tools in one response; Never include explanations in <answer>; Call Function inside the <tool_call> and </tool_call> XML tags; Always reason in <think> before acting. Should not answer directly when waiting the tool result. "
 # )
 instruction_following = (
-    r"Given a question and an image, answer the question based strictly on visual content. "
-    r"Any time you receive new information, you should reason step by step inside the <think> and </think> XML tag. "
-    r"Afterwards, you can either choose to call tool functions or directly provide the answer. "
-    r"If the input is an inverted/rotated image, automatically detect its orientation and use the tool to correct it to a standard upright position. "
-    "Only after correction can you provide the final answer wrapped with <answer></answer> XML tag. All response must be in English and final answer should be brief and concise wrapped with <answer></answer> XML tag. \n"
+    r"Given a question and an image, answer the question based strictly on visual content. Follow this protocol: "
+    r"1. **Reasoning Phase**: "
+    r"   - Analyze the image and question inside <think> and </think> XML tags "
+    r"   - Detect image orientation issues: rotation, upside down, or blurriness "
+    r"2. **Tool Decision**: "
+    r"   - If orientation issue exists: MUST call `rotate` tool ONCE "
+    r"   - If no issues: proceed directly to final answer "
+    r"3. **Tool Execution**: "
+    r'   - Format: <tool_call> {"name":"rotate","arguments":{"degree":<int>}} </tool_call> '
+    r"   - Rotation degree: integer value (e.g., 90, 180, 270) "
+    r"4. **Response Handling**: "
+    r"   - After tool call: WAIT for execution result "
+    r"   - Never answer before receiving tool response "
+    r"5. **Final Output**: "
+    r"   - Place final answer ONLY inside <answer>...</answer> "
+    r"   - Exclude all explanations from <answer> "
+    r"Critical Constraints: "
+    r"- Single tool call per response "
+    r"- Zero explanatory text in <answer> "
+    r"- Tool call MUST use exact JSON format "
+    r"- Degree must be integer without quotes. "
+    r"- Always <think> before action or providing answer "
+    r"- PLEASE put the funcion call between <tool_call> and </tool_call> XML tags. If you call the tool, you should NOT provide the answer. Vice versa if you diretly provide the answer. But for any time, you should reason inside the <think> and </think> XML tag. \n"
 )
 # Copyright 2024 Bytedance Ltd. and/or its affiliates
 #
@@ -87,7 +105,7 @@ from verl.utils.hdfs_io import copy, makedirs
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_dir", default="/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/textvqav19")
+    parser.add_argument("--local_dir", default="/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/textvqav16")
     parser.add_argument("--hdfs_dir", default=None)
 
     args = parser.parse_args()
@@ -114,7 +132,7 @@ if __name__ == "__main__":
         def process_fn(example, idx):
             problem = example.pop("question")
             # prompt = problem + " " + instruction_following
-            prompt = instruction_following + "Question:\n" + "<image>" + problem
+            prompt = instruction_following + "Question:" + "<image>" + problem + " \n"
             answer = example.pop("answers")
             images = example.pop("image")
             images = images.resize((1024,1024))
@@ -132,11 +150,11 @@ if __name__ == "__main__":
                         "role": "system",
                         "content": (
                             "You are a helpful assistant. "
-                            "\n# Tools\nEvery turn you can call one function at most among the following functions to assist with the user query."
-                            "\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n"
-                            '{"type": "function", "function": {"name": "rotate", "description": "Rotate a Pillow image by specified degrees", "parameters": {"type": "object", "properties": {"degree": {"type": "integer", "description": "Rotation angle in degrees"}}, "required": ["degree"]}}}\n</tools>\n'
+                            "\n\n# Tools\n\nYou may call one or more functions to assist with the user query."
+                            "\n\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n"
+                            '{"type": "function", "function": {"name": "rotate", "description": "Rotate a Pillow image by specified degrees", "parameters": {"type": "object", "properties": {"degree": {"type": "integer", "description": "Rotation angle in degrees (positive for clockwise, negative for counterclockwise)"}}, "required": ["degree"]}}}\n</tools>\n\n'
                             'For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n'
-                            '<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call>\nThe tool response will wrapped with <tool_response></tool_response> XML tags. '
+                            '<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call>'
                             
                             
 )
