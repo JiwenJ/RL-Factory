@@ -92,18 +92,18 @@ class SearchEnvVL(Env):
             # breakpoint()
             original_response = str(solution_str)
             answer = extract_solution(solution_str=solution_str)
-            do_print = random.randint(1, 64) == 1
+            do_print = random.randint(1, 4) == 1
             do_print = False
             # breakpoint()
             
             if do_print:
-                from time import sleep
+                # from time import sleep
                 
                 print(f"Response: {original_response}", file=sys.stderr,flush=True)
                 print(f"Golden answers: {ground_truth}",file=sys.stderr,flush=True)
                 print(f"Extracted answer: {answer}",file=sys.stderr,flush=True)
                 print(f"Solution string: {solution_str}",file=sys.stderr,flush=True)
-                sleep(0.1)
+                # sleep(0.1)
                 print(f"--------------------------------")
             
             answer_format_score = format_score if check_alternate_tags(solution_str, r"</?answer>") else (-1 * format_score)
@@ -135,12 +135,12 @@ class SearchEnvVL(Env):
             total_format_score = answer_format_score+num_score
 
             if answer is None:
-                return -1 * format_score + 0.5 * total_format_score
+                return -1 * format_score + 0.5 * total_format_score, do_print
             else:
                 for truth in ground_truth:
                     if em_check(answer, truth):
-                        return score + 0.5 * total_format_score
-                return total_format_score
+                        return score + 0.5 * total_format_score, do_print
+                return total_format_score, do_print
         
         def check_alternate_tags(text, tag_pattern):
             # 匹配所有<tool_call>和</tool_call>标签
@@ -175,8 +175,9 @@ class SearchEnvVL(Env):
             prompt_str, data_source, extra_info = processed_data['prompt_str'], processed_data['data_source'], processed_data['extra_info']
             # print(f"--------------------------------")
             # print(f"prompt_str: {prompt_str}", file=sys.stderr,flush=True)
-            score = compute_score_em(response_str, ground_truth, format_score=format_score)
-            # print(f"Score: {score}",file=sys.stderr, flush=True)
+            score, do_print = compute_score_em(response_str, ground_truth, format_score=format_score)
+            if do_print:
+                print(f"Score: {score}",file=sys.stderr, flush=True)
             scores.append([score])
 
         return scores

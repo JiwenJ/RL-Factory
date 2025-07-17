@@ -210,7 +210,7 @@ class vLLMRollout(BaseRollout):
             disable_log_stats=config.disable_log_stats,
             max_num_batched_tokens=max_num_batched_tokens,
             enable_chunked_prefill=config.enable_chunked_prefill,
-            enable_prefix_caching=True,
+            enable_prefix_caching=False,
             trust_remote_code=True,
             seed=config.get("seed", 0),
             **lora_kwargs,
@@ -375,7 +375,7 @@ class vLLMRollout(BaseRollout):
                 res_tmp = tokenizer.decode(res)
                 print(f"======= [VLLM DEBUG] [STEP [{step}]][Prompt]: {prompt}",file=sys.stderr,flush=True)
                 print(f"======= [VLLM DEBUG] [STEP [{step}]][Response]: {res_tmp}",file=sys.stderr,flush=True)
-                sleep(0.1)
+                # sleep(0.1)
             # breakpoint()
             response = pad_2d_list_to_length(response, self.pad_token_id, max_length=self.config.response_length).to(idx.device)
             rollout_log_probs = pad_2d_list_to_length(rollout_log_probs, -1, max_length=self.config.response_length).to(idx.device)
@@ -563,7 +563,7 @@ class vLLMRewardRollout(vLLMRollout):
             disable_log_stats=config.disable_log_stats,
             max_num_batched_tokens=max_num_batched_tokens,
             enable_chunked_prefill=config.enable_chunked_prefill,
-            enable_prefix_caching=True,
+            enable_prefix_caching=False,
             trust_remote_code=trust_remote_code,
             seed=config.get("seed", 0),
         )

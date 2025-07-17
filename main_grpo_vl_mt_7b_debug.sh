@@ -16,19 +16,19 @@ export RAY_DEBUG=legacy
 # export https_proxy=https://172.18.128.99:8420
 export RAY_DEDUP_LOGS=0
 export WANDB_API_KEY="76ecf2334073036f76da7b9e4eb5bbe934767728"
-export WANDB_MODE="offline"
+# export WANDB_MODE="offline"
 export WANDB_DIR=/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/wandb
 # export CUDA_VISIBLE_DEVICES=0,1,2,3
 # DATA=/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/geo3kv14
-DATA=/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/textvqav18
-export CUDA_VISIBLE_DEVICES="6,7"
+DATA=/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/textvqav21
+# export CUDA_VISIBLE_DEVICES="6,7"
 # export RAY_memory_usage_threshold
 # export RAY_memory_monitor_refresh_ms=0
 # export CUDA_VISIBLE_DEVICES=0,1
 TP=2
-Multiple=2
-Val_Multiple=2
-MINI=1
+Multiple=128
+Val_Multiple=64
+MINI=4
 # RAY_DEBUG=legacy ray start --head --dashboard-host=0.0.0.0 --ray-debugger-external
 python3 -m verl.trainer.main_ppo\
     algorithm.adv_estimator=grpo\
@@ -82,7 +82,7 @@ python3 -m verl.trainer.main_ppo\
     trainer.logger=['console','tensorboard','wandb']\
     trainer.project_name='GRPO_Visual'\
     trainer.experiment_name="Visual_7B_${DATE}"\
-    trainer.n_gpus_per_node=2\
+    trainer.n_gpus_per_node=8\
     trainer.nnodes=1\
     trainer.val_before_train=False\
     trainer.default_local_dir=/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/RL-Factory/ckpts/${DATE}_7B_Qwen25VL\

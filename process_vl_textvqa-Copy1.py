@@ -55,9 +55,11 @@ logger = logging.getLogger(__name__)
 #     r"Key rules: Never call multiple tools in one response; Never include explanations in <answer>; Call Function inside the <tool_call> and </tool_call> XML tags; Always reason in <think> before acting. Should not answer directly when waiting the tool result. "
 # )
 instruction_following = (
-    r"Given a question and an image, answer the question based strictly on visual content. Examine the image carefully and identify any recognizable entities, such as faces, objects, locations, events, logos, or text. "
-    r"Determine whether the image is not upside down and you are confident recognize the main visual element and answer the user's question. If so, first explain your reasoning, then provide a clear and direct answer. If you find the image is upside down and are unable to confidently identify the visual element, stop and invoke the image tool by appending the string <tool_call><args-json-object></tool_call> at the end of your response. You must include your reasoning inside <think>...</think> before taking any action, whether it is calling the image tool, generating a text search query, or providing a final answer. The reasoning may involve analysis of the original image and question, interpretation of search results, or logical steps leading to the final answer. "
-    r"All tool results will be placed inside <tool_response> and </tool_response> and returned to you. When you are ready to answer the question, wrap your final answer between <answer> and </answer>, without detailed illustrations. For example: <answer>Titanic</answer>. "
+    r"Given a question and an image, answer the question based strictly on visual content. "
+    r"Any time you receive new information, you should reason step by step inside the <think> and </think> XML tag. "
+    r"Afterwards, you can either choose to call tool functions or directly provide the answer. "
+    r"If the input is an inverted/rotated image, automatically detect its orientation and use the tool to correct it to a standard upright position. "
+    "Only after correction can you provide the final answer wrapped with <answer></answer> XML tag. All response must be in English and final answer should be brief and concise wrapped with <answer></answer> XML tag. \n"
 )
 # Copyright 2024 Bytedance Ltd. and/or its affiliates
 #
@@ -85,7 +87,7 @@ from verl.utils.hdfs_io import copy, makedirs
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--local_dir", default="/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/textvqav21")
+    parser.add_argument("--local_dir", default="/mnt/dolphinfs/hdd_pool/docker/share/jjw/visual_tool/Data/textvqav19")
     parser.add_argument("--hdfs_dir", default=None)
 
     args = parser.parse_args()
@@ -112,7 +114,7 @@ if __name__ == "__main__":
         def process_fn(example, idx):
             problem = example.pop("question")
             # prompt = problem + " " + instruction_following
-            prompt = "Question:" + "<image>" + problem
+            prompt = instruction_following + "Question:\n" + "<image>" + problem
             answer = example.pop("answers")
             images = example.pop("image")
             images = images.resize((1024,1024))
@@ -130,11 +132,14 @@ if __name__ == "__main__":
                         "role": "system",
                         "content": (
                             "You are a helpful assistant. "
-                            "Every turn you can call one function at most among the following functions to assist with the user query. "
-                            "You are provided with function signatures within <tools></tools> XML tags:\n<tools>\n"
+                            "\n# Tools\nEvery turn you can call one function at most among the following functions to assist with the user query."
+                            "\nYou are provided with function signatures within <tools></tools> XML tags:\n<tools>\n"
                             '{"type": "function", "function": {"name": "rotate", "description": "Rotate a Pillow image by specified degrees", "parameters": {"type": "object", "properties": {"degree": {"type": "integer", "description": "Rotation angle in degrees"}}, "required": ["degree"]}}}\n</tools>\n'
                             'For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:\n'
-                            '<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call>\n ') + instruction_following
+                            '<tool_call>\n{"name": <function-name>, "arguments": <args-json-object>}\n</tool_call>\nThe tool response will wrapped with <tool_response></tool_response> XML tags. '
+                            
+                            
+)
                     },
                     {
                         "role": "user",
@@ -156,8 +161,8 @@ if __name__ == "__main__":
 
         return process_fn
 
-    train_dataset = train_dataset.map(function=make_map_fn("train"), with_indices=True, num_proc=20)
-    test_dataset = test_dataset.map(function=make_map_fn("test"), with_indices=True, num_proc=20)
+    train_dataset = train_dataset.map(function=make_map_fn("train"), with_indices=True, num_proc=10)
+    test_dataset = test_dataset.map(function=make_map_fn("test"), with_indices=True, num_proc=10)
 
     local_dir = args.local_dir
     hdfs_dir = args.hdfs_dir

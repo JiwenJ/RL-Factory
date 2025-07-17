@@ -950,7 +950,7 @@ class RayPPOTrainer:
         last_val_metrics = None
 
         for epoch in range(self.config.trainer.total_epochs):
-            print(f"[PPO Trainer] start the epoch {epoch}",file=sys.stderr, flush=True)
+            print(f"\n[PPO Trainer] start the epoch {epoch}",file=sys.stderr, flush=True)
             # breakpoint()
             for batch_dict in self.train_dataloader:
                 # breakpoint()
