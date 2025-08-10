@@ -60,6 +60,11 @@ class CacheBase(ABC):
         pass
 
     @abstractmethod
-    def set_eviction_policy(self, policy: EvictionPolicy) -> None:
+    def set_eviction_policy(self, policy: EvictionPolicy, max_size: int) -> None:
         """设置缓存淘汰策略"""
+        pass
+
+    @abstractmethod
+    def cache_decorator(self):
+        """缓存装饰器"""
         pass

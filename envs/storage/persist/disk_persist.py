@@ -1,6 +1,7 @@
 import os
 import json
 import gzip
+import hashlib
 from datetime import datetime
 from typing import Any, Dict, Optional
 from .persist_base import PersistBase
